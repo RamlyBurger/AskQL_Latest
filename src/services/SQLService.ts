@@ -38,9 +38,8 @@ class SQLService {
 
     // Helper function to escape SQLite identifiers
     private escapeIdentifier(identifier: string): string {
-        // If the identifier contains spaces, special characters, or is a SQLite keyword, wrap it in double quotes
-        // Also escape any double quotes within the identifier by doubling them
-        return `"${identifier.replace(/"/g, '""')}"`;
+        // Always wrap identifiers in quotes to handle special cases (numbers, keywords, etc.)
+        return `"${identifier.toString().replace(/"/g, '""')}"`;
     }
 
     async createDatabase(databaseId: number, tables: any[]) {
@@ -56,48 +55,65 @@ class SQLService {
 
         // Create tables and insert data
         for (const table of tables) {
-            // Create table
-            const columns = table.attributes.map((attr: any) => {
-                let sqlType = 'TEXT';
-                switch (attr.data_type.toLowerCase()) {
-                    case 'number':
-                    case 'integer':
-                    case 'int':
-                        sqlType = 'INTEGER';
-                        break;
-                    case 'float':
-                    case 'double':
-                    case 'decimal':
-                        sqlType = 'REAL';
-                        break;
-                    case 'boolean':
-                        sqlType = 'INTEGER';
-                        break;
-                    default:
-                        sqlType = 'TEXT';
+            if (!table.attributes || table.attributes.length === 0) {
+                console.warn(`Skipping table ${table.name} - no attributes defined`);
+                continue;
+            }
+
+            try {
+                // Create table
+                const columns = table.attributes.map((attr: any) => {
+                    let sqlType = 'TEXT';
+                    switch (attr.data_type.toLowerCase()) {
+                        case 'number':
+                        case 'integer':
+                        case 'int':
+                            sqlType = 'INTEGER';
+                            break;
+                        case 'float':
+                        case 'double':
+                        case 'decimal':
+                            sqlType = 'REAL';
+                            break;
+                        case 'boolean':
+                            sqlType = 'INTEGER';
+                            break;
+                        default:
+                            sqlType = 'TEXT';
+                    }
+                    return `${this.escapeIdentifier(attr.name)} ${sqlType}`;
+                }).join(', ');
+
+                const createTableSQL = `CREATE TABLE ${this.escapeIdentifier(table.name)} (${columns})`;
+                console.log('Creating table with SQL:', createTableSQL);
+                db.run(createTableSQL);
+
+                // Insert data if available
+                if (table.data && table.data.length > 0) {
+                    const columnNames = table.attributes.map((attr: any) => this.escapeIdentifier(attr.name));
+                    const placeholders = columnNames.map(() => '?').join(', ');
+                    const insertSQL = `INSERT INTO ${this.escapeIdentifier(table.name)} (${columnNames.join(', ')}) VALUES (${placeholders})`;
+                    console.log('Inserting data with SQL:', insertSQL);
+
+                    const stmt = db.prepare(insertSQL);
+                    table.data.forEach((row: any) => {
+                        // Extract values from row_data for each column
+                        const values = table.attributes.map((attr: any) => {
+                            const value = row.row_data ? row.row_data[attr.name] : row[attr.name];
+                            // Convert empty strings to null for non-TEXT columns
+                            if (value === '' && attr.data_type.toLowerCase() !== 'text') {
+                                return null;
+                            }
+                            return value;
+                        });
+                        console.log('Inserting row values:', values);
+                        stmt.run(values);
+                    });
+                    stmt.free();
                 }
-                return `${this.escapeIdentifier(attr.name)} ${sqlType}`;
-            }).join(', ');
-
-            const createTableSQL = `CREATE TABLE ${this.escapeIdentifier(table.name)} (${columns})`;
-            console.log('Creating table with SQL:', createTableSQL);
-            db.run(createTableSQL);
-
-            // Insert data if available
-            if (table.data && table.data.length > 0) {
-                const columnNames = table.attributes.map((attr: any) => this.escapeIdentifier(attr.name));
-                const placeholders = columnNames.map(() => '?').join(', ');
-                const insertSQL = `INSERT INTO ${this.escapeIdentifier(table.name)} (${columnNames.join(', ')}) VALUES (${placeholders})`;
-                console.log('Inserting data with SQL:', insertSQL);
-
-                const stmt = db.prepare(insertSQL);
-                table.data.forEach((row: any) => {
-                    // Extract values from row_data for each column
-                    const values = table.attributes.map((attr: any) => row.row_data ? row.row_data[attr.name] : row[attr.name]);
-                    console.log('Inserting row values:', values);
-                    stmt.run(values);
-                });
-                stmt.free();
+            } catch (error) {
+                console.error(`Error creating table ${table.name}:`, error);
+                throw error;
             }
         }
 

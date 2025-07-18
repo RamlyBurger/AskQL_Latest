@@ -46,8 +46,10 @@ CREATE TABLE "chat_message" (
     "database_id" INTEGER REFERENCES "database"(id) ON DELETE CASCADE,
     "sender" VARCHAR(10) NOT NULL,  -- 'user' or 'bot'
     "content" TEXT NOT NULL,
-    "attachment_path" VARCHAR(512),  -- Path to attached file (image/document)
-    "audio_path" VARCHAR(512),      -- Path to voice message
+    "message_type" VARCHAR(20) DEFAULT 'text',  -- 'text', 'image', 'file', 'voice'
+    "file_url" TEXT,               -- URL or path to attached file
+    "file_name" VARCHAR(255),      -- Original file name if applicable
+    "sql_query" TEXT,              -- Store SQL queries separately
     "created_at" TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 

@@ -2,21 +2,17 @@ import express from 'express';
 import { DatabaseController } from '../controllers/DatabaseController';
 
 const router = express.Router();
-const databaseController = new DatabaseController();
 
-// Get all databases
-router.get('/', (req, res) => databaseController.getAllDatabases(req, res));
+// Special routes that need to come first
+router.post('/reset', DatabaseController.resetDatabase);
 
-// Get database by ID
-router.get('/:id', (req, res) => databaseController.getDatabaseById(req, res));
+// Standard CRUD routes
+router.get('/', DatabaseController.getAllDatabases);
+router.post('/', DatabaseController.createDatabase);
 
-// Create new database
-router.post('/', (req, res) => databaseController.createDatabase(req, res));
-
-// Update database
-router.put('/:id', (req, res) => databaseController.updateDatabase(req, res));
-
-// Delete database
-router.delete('/:id', (req, res) => databaseController.deleteDatabase(req, res));
+// Routes with parameters
+router.get('/:id', DatabaseController.getDatabaseById);
+router.put('/:id', DatabaseController.updateDatabase);
+router.delete('/:id', DatabaseController.deleteDatabase);
 
 export default router; 

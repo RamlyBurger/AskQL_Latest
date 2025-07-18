@@ -1,11 +1,12 @@
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
-import Layout from './components/shared/Layout';
 import HomePage from './pages/HomePage';
 import DatabasePage from './pages/DatabasePage';
 import DatabaseDetailPage from './pages/DatabaseDetailPage';
 import TableDetailPage from './pages/TableDetailPage';
-import InsightsPage from './pages/InsightsPage';
 import QueryResultsPage from './pages/QueryResultsPage';
+import InsightsPage from './pages/InsightsPage';
+import ResetDatabasePage from './pages/ResetDatabasePage';
+import Layout from './components/shared/Layout';
 import DatabaseViewWrapper from './components/DatabaseViewWrapper';
 
 function App() {
@@ -19,8 +20,9 @@ function App() {
                         <Route path="/database/:id" element={<DatabaseDetailPage />} />
                         <Route path="/table/:id" element={<TableDetailPage />} />
                     </Route>
-                    <Route path="/insights" element={<InsightsPage />} />
                     <Route path="/query-results" element={<QueryResultsPage />} />
+                    <Route path="/insights" element={<InsightsPage />} />
+                    <Route path="/reset-database" element={<ResetDatabasePage />} />
                 </Routes>
             </Layout>
         </Router>

@@ -40,7 +40,7 @@ When you need a SQL query, I'll provide it in the most appropriate SQL dialect f
         this.apiKey = apiKey;
     }
 
-    private handleGeneralQuery(message: string, database?: any): string {
+    private async handleGeneralQuery(message: string, database?: any): Promise<string> {
         if (message.toLowerCase().match(/what (?:can|could) you do/i) || 
             message.toLowerCase().includes('your capabilities') ||
             message.toLowerCase().includes('what do you do')) {
@@ -57,12 +57,23 @@ Database: ${database.name}
 Tables: ${database.tables.map((t: any) => t.name).join(', ')}
 
 Each table's structure:`;
-                database.tables.forEach((table: any) => {
+                
+                for (const table of database.tables) {
                     response += `\n\n${table.name}:`;
-                    table.attributes.forEach((attr: any) => {
-                        response += `\n- ${attr.name} (${attr.data_type})`;
-                    });
-                });
+                    try {
+                        const tableDetails = await DatabaseService.getTableById(table.id);
+                        if (tableDetails && tableDetails.attributes) {
+                            tableDetails.attributes.forEach((attr: any) => {
+                                response += `\n- ${attr.name} (${attr.data_type})`;
+                            });
+                        } else {
+                            response += '\n(No attributes defined)';
+                        }
+                    } catch (error) {
+                        console.error(`Error fetching table details for ${table.name}:`, error);
+                        response += '\n(Error fetching table details)';
+                    }
+                }
             }
 
             return response;
@@ -126,7 +137,7 @@ Each table's structure:`;
         try {
             // Check if it's a general chatbot question
             if (this.isGeneralQuery(message)) {
-                return this.handleGeneralQuery(message, database);
+                return await this.handleGeneralQuery(message, database);
             }
 
             if (!database) {
@@ -184,21 +195,34 @@ Structure:`;
 
         for (const table of database.tables) {
             context += `\n\n${table.name}:`;
-            table.attributes.forEach((attr: any) => {
-                context += `\n- ${attr.name} (${attr.data_type})`;
-            });
-
-            // Get sample data
+            
+            // Get table details to ensure we have attributes
             try {
-                const sampleData = await DatabaseService.getTableData(table.id, 1, 5);
-                if (sampleData && sampleData.data && sampleData.data.length > 0) {
-                    context += '\n\nSample Data (5 rows):';
-                    sampleData.data.forEach((row: any) => {
-                        context += '\n' + JSON.stringify(row.row_data);
+                const tableDetails = await DatabaseService.getTableById(table.id);
+                if (tableDetails && tableDetails.attributes) {
+                    tableDetails.attributes.forEach((attr: any) => {
+                        context += `\n- ${attr.name} (${attr.data_type})`;
                     });
+                } else {
+                    context += '\n(No attributes defined)';
+                }
+
+                // Get sample data
+                try {
+                    const sampleData = await DatabaseService.getTableData(table.id, 1, 5);
+                    if (sampleData && sampleData.data && sampleData.data.length > 0) {
+                        context += '\n\nSample Data (5 rows):';
+                        sampleData.data.forEach((row: any) => {
+                            context += '\n' + JSON.stringify(row.row_data);
+                        });
+                    }
+                } catch (error) {
+                    console.error(`Error fetching sample data for table ${table.name}:`, error);
+                    context += '\n(Error fetching sample data)';
                 }
             } catch (error) {
-                console.error(`Error fetching sample data for table ${table.name}:`, error);
+                console.error(`Error fetching table details for ${table.name}:`, error);
+                context += '\n(Error fetching table details)';
             }
 
             context += '\n---';
