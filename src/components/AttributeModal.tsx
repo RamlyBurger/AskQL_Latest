@@ -15,11 +15,27 @@ const AttributeModal = ({ isOpen, onClose, table, onUpdate }: AttributeModalProp
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
+    // Fetch table attributes when modal opens
     useEffect(() => {
-        if (table.attributes) {
-            setAttributes(table.attributes);
-        }
-    }, [table.attributes]);
+        const fetchAttributes = async () => {
+            if (!isOpen) return;
+            
+            try {
+                setIsLoading(true);
+                const tableDetails = await DatabaseService.getTableById(table.id);
+                if (tableDetails && tableDetails.attributes) {
+                    setAttributes(tableDetails.attributes);
+                }
+            } catch (err) {
+                console.error('Error fetching attributes:', err);
+                setError('Failed to load attributes');
+            } finally {
+                setIsLoading(false);
+            }
+        };
+
+        fetchAttributes();
+    }, [isOpen, table.id]);
 
     const handleAddAttribute = () => {
         setAttributes([
@@ -112,58 +128,65 @@ const AttributeModal = ({ isOpen, onClose, table, onUpdate }: AttributeModalProp
                     </div>
                 )}
 
-                <div className="space-y-4">
-                    {attributes.map((attribute, index) => (
-                        <div key={attribute.id} className="flex gap-4 items-start">
-                            <div className="flex-1">
-                                <input
-                                    type="text"
-                                    value={attribute.name}
-                                    onChange={(e) => handleAttributeChange(index, 'name', e.target.value)}
-                                    placeholder="Column name"
-                                    className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
-                                />
-                            </div>
-                            <div className="flex-1">
-                                <select
-                                    value={attribute.data_type}
-                                    onChange={(e) => handleAttributeChange(index, 'data_type', e.target.value)}
-                                    className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
-                                >
-                                    {Object.values(DataType).map(type => (
-                                        <option key={type} value={type}>
-                                            {type}
-                                        </option>
-                                    ))}
-                                </select>
-                            </div>
-                            <div className="flex items-center space-x-4">
-                                <label className="flex items-center">
+                {isLoading ? (
+                    <div className="flex justify-center items-center py-8">
+                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+                    </div>
+                ) : (
+                    <div className="space-y-4">
+                        {attributes.map((attribute, index) => (
+                            <div key={attribute.id} className="flex gap-4 items-start">
+                                <div className="flex-1">
                                     <input
-                                        type="checkbox"
-                                        checked={attribute.is_nullable}
-                                        onChange={(e) => handleAttributeChange(index, 'is_nullable', e.target.checked)}
-                                        className="rounded border-gray-300 text-blue-600 shadow-sm focus:border-blue-300 focus:ring focus:ring-blue-200 focus:ring-opacity-50 dark:bg-gray-700 dark:border-gray-600"
+                                        type="text"
+                                        value={attribute.name}
+                                        onChange={(e) => handleAttributeChange(index, 'name', e.target.value)}
+                                        placeholder="Column name"
+                                        className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
                                     />
-                                    <span className="ml-2 text-sm text-gray-600 dark:text-gray-300">Nullable</span>
-                                </label>
-                                <button
-                                    onClick={() => handleRemoveAttribute(index)}
-                                    className="text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300"
-                                >
-                                    <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                    </svg>
-                                </button>
+                                </div>
+                                <div className="flex-1">
+                                    <select
+                                        value={attribute.data_type}
+                                        onChange={(e) => handleAttributeChange(index, 'data_type', e.target.value)}
+                                        className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                                    >
+                                        {Object.values(DataType).map(type => (
+                                            <option key={type} value={type}>
+                                                {type}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div className="flex items-center space-x-4">
+                                    <label className="flex items-center">
+                                        <input
+                                            type="checkbox"
+                                            checked={attribute.is_nullable}
+                                            onChange={(e) => handleAttributeChange(index, 'is_nullable', e.target.checked)}
+                                            className="rounded border-gray-300 text-blue-600 shadow-sm focus:border-blue-300 focus:ring focus:ring-blue-200 focus:ring-opacity-50 dark:bg-gray-700 dark:border-gray-600"
+                                        />
+                                        <span className="ml-2 text-sm text-gray-600 dark:text-gray-300">Nullable</span>
+                                    </label>
+                                    <button
+                                        onClick={() => handleRemoveAttribute(index)}
+                                        className="text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300"
+                                    >
+                                        <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                        </svg>
+                                    </button>
+                                </div>
                             </div>
-                        </div>
-                    ))}
-                </div>
+                        ))}
+                    </div>
+                )}
 
                 <div className="mt-6 flex justify-between">
                     <button
                         onClick={handleAddAttribute}
                         className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+                        disabled={isLoading}
                     >
                         Add Column
                     </button>
@@ -171,6 +194,7 @@ const AttributeModal = ({ isOpen, onClose, table, onUpdate }: AttributeModalProp
                         <button
                             onClick={onClose}
                             className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 bg-white hover:bg-gray-50 dark:bg-gray-700 dark:text-gray-300 dark:border-gray-600"
+                            disabled={isLoading}
                         >
                             Cancel
                         </button>
