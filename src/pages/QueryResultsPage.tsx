@@ -1,0 +1,350 @@
+import React, { useEffect, useState, useMemo } from 'react';
+import { useSearchParams, useNavigate } from 'react-router-dom';
+import {
+    useReactTable,
+    getCoreRowModel,
+    getPaginationRowModel,
+    getSortedRowModel,
+    getFilteredRowModel,
+    createColumnHelper,
+    flexRender,
+    type ColumnDef,
+    type SortingState,
+} from '@tanstack/react-table';
+import SQLService from '../services/SQLService';
+import { DatabaseService } from '../services/DatabaseService';
+import type { SQLResult } from '../services/SQLService';
+import { parseValueByType, formatDisplayValue } from '../utils/dataTypeUtils';
+
+const QueryResultsPage: React.FC = () => {
+    const [searchParams] = useSearchParams();
+    const [results, setResults] = useState<SQLResult | null>(null);
+    const [error, setError] = useState<string | null>(null);
+    const [loading, setLoading] = useState(true);
+    const navigate = useNavigate();
+    const [globalFilter, setGlobalFilter] = useState('');
+    const [sorting, setSorting] = useState<SortingState>([]);
+    const [pagination, setPagination] = useState({
+        pageIndex: 0,
+        pageSize: 10
+    });
+
+    const sql = searchParams.get('sql');
+    const dbId = searchParams.get('dbId');
+
+    useEffect(() => {
+        const loadDatabaseAndExecuteQuery = async () => {
+            if (!sql || !dbId) {
+                setError('Missing SQL query or database ID');
+                setLoading(false);
+                return;
+            }
+
+            try {
+                // First, get the database structure
+                const database = await DatabaseService.getDatabaseById(parseInt(dbId));
+                console.log('Database structure:', database);
+                
+                // For each table, fetch its data
+                const tablesWithData = await Promise.all(
+                    (database.tables || []).map(async (table) => {
+                        // Fetch all data for the table (no pagination)
+                        const tableData = await DatabaseService.getTableData(table.id, 1, 1000000, undefined, undefined, 1000000);
+                        console.log(`Table ${table.name} data:`, tableData);
+                        
+                        // Transform the data to match SQL.js format
+                        const transformedData = tableData.data.map(row => ({
+                            ...row,
+                            // Extract data from row_data JSONB
+                            ...row.row_data
+                        }));
+                        
+                        return {
+                            ...table,
+                            data: transformedData,
+                            columnTypes: tableData.columnTypes
+                        };
+                    })
+                );
+
+                // Initialize SQL.js and create the database with the table data
+                const sqlService = SQLService.getInstance();
+                await sqlService.createDatabase(parseInt(dbId), tablesWithData);
+
+                // Now execute the query
+                console.log('Executing SQL query:', sql);
+                const result = await sqlService.executeQuery(parseInt(dbId), sql);
+                console.log('Query result:', result);
+                
+                // Get the table name from the SQL query
+                const tableMatch = sql.match(/from\s+(\w+)/i);
+                const tableName = tableMatch ? tableMatch[1] : null;
+                
+                // Find the table's column types
+                const table = tablesWithData.find(t => t.name.toLowerCase() === tableName?.toLowerCase());
+                const columnTypes = table?.columnTypes || {};
+                
+                setResults({
+                    ...result,
+                    columnTypes
+                });
+            } catch (error: any) {
+                console.error('Error executing query:', error);
+                setError(error.message || 'Failed to execute query');
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        loadDatabaseAndExecuteQuery();
+    }, [sql, dbId]);
+
+    const columnHelper = createColumnHelper<any>();
+
+    const columns = useMemo(() => {
+        if (!results?.columns) return [];
+
+        // Add Row Number column first
+        const cols: ColumnDef<any, unknown>[] = [
+            {
+                id: 'rowNumber',
+                header: '#',
+                accessorFn: (row: any, index: number) => index + 1,
+                cell: (info) => info.getValue(),
+                enableSorting: true,
+            }
+        ];
+
+        // Add data columns
+        const dataCols = results.columns.map(column => ({
+            accessorFn: (row: any) => {
+                const value = row[column];
+                const dataType = results.columnTypes?.[column] || 'varchar';
+                return parseValueByType(value, dataType, true);
+            },
+            id: column,
+            header: () => (
+                <div className="cursor-pointer">
+                    {column}
+                </div>
+            ),
+            cell: (info: any) => {
+                const value = info.getValue();
+                const dataType = results.columnTypes?.[info.column.id] || 'varchar';
+                const displayValue = formatDisplayValue(value, dataType);
+                return (
+                    <div className="truncate">
+                        {displayValue}
+                    </div>
+                );
+            },
+            enableSorting: true,
+            sortingFn: (rowA: any, rowB: any, columnId: string) => {
+                const a = rowA.getValue(columnId);
+                const b = rowB.getValue(columnId);
+
+                if (a === null && b === null) return 0;
+                if (a === null) return 1;
+                if (b === null) return -1;
+
+                if (a < b) return -1;
+                if (a > b) return 1;
+                return 0;
+            }
+        }));
+
+        cols.push(...dataCols);
+        return cols;
+    }, [results?.columns, results?.columnTypes]);
+
+    const data = useMemo(() => {
+        if (!results?.rows) return [];
+        return results.rows.map(row => {
+            if (row.row_data) {
+                return row.row_data;
+            }
+            return row;
+        });
+    }, [results?.rows]);
+
+    const table = useReactTable({
+        data,
+        columns,
+        getCoreRowModel: getCoreRowModel(),
+        getSortedRowModel: getSortedRowModel(),
+        getFilteredRowModel: getFilteredRowModel(),
+        getPaginationRowModel: getPaginationRowModel(),
+        state: {
+            sorting,
+            globalFilter,
+            pagination,
+        },
+        onSortingChange: setSorting,
+        onGlobalFilterChange: setGlobalFilter,
+        onPaginationChange: setPagination,
+    });
+
+    const handleBack = () => {
+        navigate(-1);
+    };
+
+    if (loading) {
+        return (
+            <div className="flex items-center justify-center min-h-screen">
+                <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+            </div>
+        );
+    }
+
+    return (
+        <div className="overflow-hidden rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
+            {/* Header */}
+            <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+                <div className="flex justify-between items-center mb-4">
+                    <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Query Results</h2>
+                    <button
+                        onClick={handleBack}
+                        className="px-4 py-2 bg-gray-100 text-gray-700 rounded hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600"
+                    >
+                        Back
+                    </button>
+                </div>
+
+                {error ? (
+                    <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded">
+                        <p className="font-bold">Error</p>
+                        <p>{error}</p>
+                    </div>
+                ) : (
+                    <div className="space-y-3">
+                        <div className="flex items-center gap-4">
+                            <input
+                                type="text"
+                                placeholder="Search all columns..."
+                                value={globalFilter}
+                                onChange={e => setGlobalFilter(e.target.value)}
+                                className="block flex-1 px-4 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                            />
+                        </div>
+                    </div>
+                )}
+            </div>
+
+            {/* Table */}
+            {!error && results && (
+                <>
+                    <div className="overflow-x-auto">
+                        <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                            <thead className="bg-gray-50 dark:bg-gray-700">
+                                {table.getHeaderGroups().map(headerGroup => (
+                                    <tr key={headerGroup.id}>
+                                        {headerGroup.headers.map(header => (
+                                            <th
+                                                key={header.id}
+                                                onClick={header.column.getToggleSortingHandler()}
+                                                className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600"
+                                            >
+                                                <div className="flex items-center gap-1">
+                                                    {flexRender(
+                                                        header.column.columnDef.header,
+                                                        header.getContext()
+                                                    )}
+                                                    {header.column.getIsSorted() && (
+                                                        <span className="text-blue-600 dark:text-blue-400">
+                                                            {header.column.getIsSorted() === 'asc' ? '↑' : '↓'}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            </th>
+                                        ))}
+                                    </tr>
+                                ))}
+                            </thead>
+                            <tbody className="bg-white divide-y divide-gray-200 dark:bg-gray-800 dark:divide-gray-700">
+                                {table.getRowModel().rows.map(row => (
+                                    <tr
+                                        key={row.id}
+                                        className="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
+                                    >
+                                        {row.getVisibleCells().map(cell => (
+                                            <td
+                                                key={cell.id}
+                                                className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-300"
+                                            >
+                                                {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                                            </td>
+                                        ))}
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    {/* Pagination */}
+                    <div className="px-6 py-4 border-t border-gray-200 dark:border-gray-700">
+                        <div className="flex flex-wrap justify-between items-center gap-4">
+                            <div className="flex items-center gap-2">
+                                <span className="text-sm text-gray-700 dark:text-gray-300">
+                                    Page{' '}
+                                    <strong>
+                                        {pagination.pageIndex + 1} of{' '}
+                                        {table.getPageCount()}
+                                    </strong>
+                                </span>
+                                <select
+                                    value={pagination.pageSize}
+                                    onChange={e => {
+                                        setPagination(prev => ({
+                                            ...prev,
+                                            pageSize: Number(e.target.value),
+                                            pageIndex: 0
+                                        }));
+                                    }}
+                                    className="px-2 py-1 border border-gray-300 rounded-md text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                                >
+                                    {[10, 20, 30, 40, 50].map(pageSize => (
+                                        <option key={pageSize} value={pageSize}>
+                                            Show {pageSize}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                            <div className="flex gap-2">
+                                <button
+                                    onClick={() => setPagination(prev => ({ ...prev, pageIndex: 0 }))}
+                                    disabled={!table.getCanPreviousPage()}
+                                    className="inline-flex items-center px-2 py-1 border border-gray-300 text-sm rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-gray-300 dark:border-gray-600 dark:hover:bg-gray-600 disabled:opacity-50"
+                                >
+                                    {'<<'}
+                                </button>
+                                <button
+                                    onClick={() => table.previousPage()}
+                                    disabled={!table.getCanPreviousPage()}
+                                    className="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-gray-300 dark:border-gray-600 dark:hover:bg-gray-600 disabled:opacity-50"
+                                >
+                                    Previous
+                                </button>
+                                <button
+                                    onClick={() => table.nextPage()}
+                                    disabled={!table.getCanNextPage()}
+                                    className="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-gray-300 dark:border-gray-600 dark:hover:bg-gray-600 disabled:opacity-50"
+                                >
+                                    Next
+                                </button>
+                                <button
+                                    onClick={() => setPagination(prev => ({ ...prev, pageIndex: table.getPageCount() - 1 }))}
+                                    disabled={!table.getCanNextPage()}
+                                    className="inline-flex items-center px-2 py-1 border border-gray-300 text-sm rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-gray-300 dark:border-gray-600 dark:hover:bg-gray-600 disabled:opacity-50"
+                                >
+                                    {'>>'}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </>
+            )}
+        </div>
+    );
+};
+
+export default QueryResultsPage; 

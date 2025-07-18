@@ -1,0 +1,126 @@
+/* Import JointJS styles */
+@import 'jointjs/dist/joint.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Base styles */
+:root {
+    --border-color: #e0e0e0;
+}
+
+@media (prefers-color-scheme: dark) {
+    :root {
+        --border-color: #333333;
+    }
+}
+
+/* For manual dark mode toggle */
+.dark {
+    --border-color: #333333;
+}
+
+body {
+    font-family: 'Inter', sans-serif;
+}
+
+/* Common utility classes */
+.gradient-text {
+    background: linear-gradient(45deg, #1a1a1a, #333333, #4d4d4d);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+}
+
+.dark .gradient-text {
+    background: linear-gradient(45deg, #ffffff, #e0e0e0, #cccccc);
+}
+
+/* Navigation styles */
+.nav-container {
+    position: fixed;
+    width: 100%;
+    z-index: 50;
+}
+
+.nav-blur {
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+}
+
+.nav-shadow {
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+/* Common animations */
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+@keyframes slideUp {
+    from { transform: translateY(20px); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
+}
+
+/* Common components */
+.btn {
+    @apply px-6 py-2 rounded-lg transition-all duration-300;
+}
+
+.btn-primary {
+    @apply bg-gray-900 text-white hover:bg-black dark:bg-gray-100 dark:text-black dark:hover:bg-white;
+}
+
+.btn-secondary {
+    @apply bg-gray-200 text-gray-800 hover:bg-gray-300 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700;
+}
+
+/* Layout utilities */
+.container {
+    @apply mx-auto px-4 sm:px-6 lg:px-8;
+    max-width: 1280px;
+}
+
+.section {
+    @apply py-12 sm:py-16 lg:py-20;
+}
+
+/* Form elements */
+.input {
+    @apply w-full px-4 py-2 rounded-lg border focus:ring-2
+    dark:bg-gray-800 dark:text-gray-100;
+    border-color: var(--border-color);
+}
+
+.input:focus {
+    border-color: #1a1a1a;
+    @apply dark:border-gray-100 dark:ring-gray-700;
+}
+
+.label {
+    @apply block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1;
+}
+
+/* Common transitions */
+.transition-base {
+    @apply transition-all duration-300 ease-in-out;
+}
+
+/* Responsive utilities */
+@media (max-width: 640px) {
+    .container {
+        @apply px-4;
+    }
+}
+
+/* AOS default styles */
+[data-aos] {
+    opacity: 0;
+    transition-property: transform, opacity;
+}
+
+[data-aos].aos-animate {
+    opacity: 1;
+} 
