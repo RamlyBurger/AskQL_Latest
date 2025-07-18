@@ -1,4 +1,5 @@
-import initSqlJs, { Database } from 'sql.js';
+import initSqlJs from 'sql.js';
+import type { Database } from 'sql.js';
 
 export interface SQLResult {
     columns: string[];
@@ -35,6 +36,13 @@ class SQLService {
         return this.SQL;
     }
 
+    // Helper function to escape SQLite identifiers
+    private escapeIdentifier(identifier: string): string {
+        // If the identifier contains spaces, special characters, or is a SQLite keyword, wrap it in double quotes
+        // Also escape any double quotes within the identifier by doubling them
+        return `"${identifier.replace(/"/g, '""')}"`;
+    }
+
     async createDatabase(databaseId: number, tables: any[]) {
         if (!this.SQL) {
             await this.init();
@@ -68,24 +76,24 @@ class SQLService {
                     default:
                         sqlType = 'TEXT';
                 }
-                return `${attr.name} ${sqlType}`;
+                return `${this.escapeIdentifier(attr.name)} ${sqlType}`;
             }).join(', ');
 
-            const createTableSQL = `CREATE TABLE ${table.name} (${columns})`;
+            const createTableSQL = `CREATE TABLE ${this.escapeIdentifier(table.name)} (${columns})`;
             console.log('Creating table with SQL:', createTableSQL);
             db.run(createTableSQL);
 
             // Insert data if available
             if (table.data && table.data.length > 0) {
-                const columnNames = table.attributes.map((attr: any) => attr.name);
+                const columnNames = table.attributes.map((attr: any) => this.escapeIdentifier(attr.name));
                 const placeholders = columnNames.map(() => '?').join(', ');
-                const insertSQL = `INSERT INTO ${table.name} (${columnNames.join(', ')}) VALUES (${placeholders})`;
+                const insertSQL = `INSERT INTO ${this.escapeIdentifier(table.name)} (${columnNames.join(', ')}) VALUES (${placeholders})`;
                 console.log('Inserting data with SQL:', insertSQL);
 
                 const stmt = db.prepare(insertSQL);
                 table.data.forEach((row: any) => {
                     // Extract values from row_data for each column
-                    const values = columnNames.map(col => row.row_data ? row.row_data[col] : row[col]);
+                    const values = table.attributes.map((attr: any) => row.row_data ? row.row_data[attr.name] : row[attr.name]);
                     console.log('Inserting row values:', values);
                     stmt.run(values);
                 });

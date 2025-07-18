@@ -178,58 +178,56 @@ export class TableController {
                 });
             }
 
-            // Validate attributes
-            if (attributes && Array.isArray(attributes)) {
-                // Check for duplicate column names
-                const columnNames = attributes.map(attr => attr.name.toLowerCase());
-                const duplicateColumns = columnNames.filter((name, index) => columnNames.indexOf(name) !== index);
-                if (duplicateColumns.length > 0) {
-                    return res.status(400).json({
-                        success: false,
-                        message: `Duplicate column names found: ${duplicateColumns.join(', ')}`
-                    });
-                }
-
-                // Validate data types
-                const invalidTypes = attributes
-                    .filter(attr => !isValidDataType(attr.data_type))
-                    .map(attr => `${attr.name}: ${attr.data_type}`);
-
-                if (invalidTypes.length > 0) {
-                    return res.status(400).json({
-                        success: false,
-                        message: `Invalid data types found: ${invalidTypes.join(', ')}. Valid types are: ${Object.values(DataType).join(', ')}`
-                    });
-                }
-            }
-
             // Update table basic info
             table.name = name || table.name;
             table.description = description || table.description;
 
-            // Delete existing attributes
-            if (table.attributes) {
-                await this.attributeRepository.remove(table.attributes);
-            }
-
             // Save updated table
             const savedTable = await this.tableRepository.save(table);
 
-            // Create new attributes
             if (attributes && Array.isArray(attributes)) {
-                const attributePromises = attributes.map(attr => {
-                    const attribute = this.attributeRepository.create({
-                        name: attr.name,
-                        data_type: attr.data_type,
-                        is_nullable: attr.is_nullable,
-                        is_primary_key: attr.is_primary_key,
-                        is_foreign_key: attr.is_foreign_key,
-                        table: savedTable
-                    });
-                    return this.attributeRepository.save(attribute);
-                });
+                // Update or create attributes
+                const updatedAttributes = await Promise.all(
+                    attributes.map(async (attr) => {
+                        // Try to find existing attribute
+                        let attribute = await this.attributeRepository.findOne({
+                            where: {
+                                table_id: savedTable.id,
+                                name: attr.name
+                            }
+                        });
 
-                await Promise.all(attributePromises);
+                        if (attribute) {
+                            // Update existing attribute
+                            attribute.data_type = attr.data_type;
+                            attribute.is_nullable = attr.is_nullable;
+                            attribute.is_primary_key = attr.is_primary_key;
+                            attribute.is_foreign_key = attr.is_foreign_key;
+                        } else {
+                            // Create new attribute
+                            attribute = this.attributeRepository.create({
+                                name: attr.name,
+                                data_type: attr.data_type,
+                                is_nullable: attr.is_nullable,
+                                is_primary_key: attr.is_primary_key,
+                                is_foreign_key: attr.is_foreign_key,
+                                table: savedTable
+                            });
+                        }
+
+                        return this.attributeRepository.save(attribute);
+                    })
+                );
+
+                // Remove attributes that are not in the new list
+                const newAttributeNames = attributes.map(attr => attr.name);
+                const attributesToRemove = table.attributes.filter(
+                    attr => !newAttributeNames.includes(attr.name)
+                );
+
+                if (attributesToRemove.length > 0) {
+                    await this.attributeRepository.remove(attributesToRemove);
+                }
             }
 
             // Fetch the complete updated table with attributes

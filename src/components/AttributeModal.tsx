@@ -46,6 +46,7 @@ const AttributeModal = ({ isOpen, onClose, table, onUpdate }: AttributeModalProp
         setAttributes(attributes.map((attr, i) => 
             i === index ? { ...attr, [field]: value } : attr
         ));
+        setError(null); // Clear error when user makes changes
     };
 
     const handleSave = async () => {
@@ -53,19 +54,26 @@ const AttributeModal = ({ isOpen, onClose, table, onUpdate }: AttributeModalProp
             setIsLoading(true);
             setError(null);
 
-            // Validate attributes
-            const duplicateNames = attributes
-                .map(attr => attr.name.toLowerCase())
-                .filter((name, index, array) => array.indexOf(name) !== index);
-
-            if (duplicateNames.length > 0) {
-                throw new Error(`Duplicate column names found: ${duplicateNames.join(', ')}`);
+            // Only check for empty names and duplicates
+            const emptyNames = attributes.some(attr => !attr.name.trim());
+            if (emptyNames) {
+                throw new Error('All attributes must have names');
             }
+
+            // Check for duplicate names (case insensitive)
+            const names = attributes.map(attr => attr.name.toLowerCase().trim());
+            const duplicateNames = names.filter((name, index) => names.indexOf(name) !== index);
+            if (duplicateNames.length > 0) {
+                throw new Error(`Duplicate column names found: ${[...new Set(duplicateNames)].join(', ')}`);
+            }
+
+            // Filter out any temporary attributes that were removed
+            const validAttributes = attributes.filter(attr => attr.name.trim());
 
             await DatabaseService.updateTable(table.id, {
                 name: table.name,
                 description: table.description,
-                attributes: attributes
+                attributes: validAttributes
             });
 
             onUpdate();

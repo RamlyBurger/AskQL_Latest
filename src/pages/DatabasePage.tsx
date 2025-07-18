@@ -26,6 +26,7 @@ const DatabasePage = () => {
     const [isLoading, setIsLoading] = useState(false);
     const [databases, setDatabases] = useState<Database[]>([]);
     const [selectedDatabase, setSelectedDatabase] = useState<Database | null>(null);
+    const [error, setError] = useState<string | null>(null);
     const [formData, setFormData] = useState<DatabaseFormData>({
         name: '',
         description: '',
@@ -53,14 +54,26 @@ const DatabasePage = () => {
             }
         } catch (error) {
             console.error('Error fetching databases:', error);
+            setError('Failed to fetch databases');
         }
     };
 
     const handleCreateDatabase = async (e: React.FormEvent) => {
         e.preventDefault();
         setIsLoading(true);
+        setError(null); // Clear any previous errors
         
         try {
+            // Basic validation
+            if (!formData.name.trim()) {
+                throw new Error('Database name is required');
+            }
+
+            // Check if name contains only numbers
+            if (/^\d+$/.test(formData.name.trim())) {
+                throw new Error('Database name cannot contain only numbers');
+            }
+
             const response = await fetch(`${API_URL}/databases`, {
                 method: 'POST',
                 headers: {
@@ -81,9 +94,12 @@ const DatabasePage = () => {
                     description: '',
                     database_type: 'postgresql'
                 });
+            } else {
+                throw new Error(data.message || 'Failed to create database');
             }
-        } catch (error) {
+        } catch (error: any) {
             console.error('Error creating database:', error);
+            setError(error.message || 'Failed to create database. The database name must be unique.');
         } finally {
             setIsLoading(false);
         }
@@ -240,6 +256,14 @@ const DatabasePage = () => {
                         <h3 className="text-2xl font-bold text-gray-900 dark:text-white mb-6">
                             {isEditModalOpen ? 'Edit Database' : 'Create New Database'}
                         </h3>
+                        
+                        {/* Error Display */}
+                        {error && (
+                            <div className="mb-4 p-4 bg-red-100 border border-red-400 text-red-700 rounded-lg">
+                                {error}
+                            </div>
+                        )}
+
                         <form onSubmit={isEditModalOpen ? handleEditDatabase : handleCreateDatabase}>
                             <div className="space-y-6">
                                 <div>
@@ -250,9 +274,12 @@ const DatabasePage = () => {
                                         type="text"
                                         required
                                         value={formData.name}
-                                        onChange={(e) => setFormData({...formData, name: e.target.value})}
+                                        onChange={(e) => {
+                                            setFormData({...formData, name: e.target.value});
+                                            setError(null); // Clear error when user types
+                                        }}
                                         className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-purple-500 dark:focus:ring-purple-400 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                                        placeholder="Enter database name"
+                                        placeholder="Enter database name (cannot be only numbers)"
                                     />
                                 </div>
                                 <div>
@@ -290,6 +317,7 @@ const DatabasePage = () => {
                                             setIsCreateModalOpen(false);
                                             setIsEditModalOpen(false);
                                             setSelectedDatabase(null);
+                                            setError(null); // Clear error when closing modal
                                         }}
                                         className="px-6 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700"
                                     >

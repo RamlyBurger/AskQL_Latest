@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate, useOutletContext } from 'react-router-dom';
-import type { Database, Table, TableFormData, Attribute } from '../services/DatabaseService';
+import type { Database, Table, TableFormData, Attribute, AttributeFormData } from '../services/DatabaseService';
 import { DatabaseService } from '../services/DatabaseService';
 import TableDataView from '../components/TableDataView';
 import ImportCSVModal from '../components/ImportCSVModal';
 import AttributeModal from '../components/AttributeModal';
+import CreateTableModal from '../components/CreateTableModal';
 
 interface DatabaseContextType {
     database: Database | null;
@@ -20,6 +21,7 @@ const DatabaseDetailPage = () => {
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [isImportCSVModalOpen, setIsImportCSVModalOpen] = useState(false);
+    const [isCreateTableModalOpen, setIsCreateTableModalOpen] = useState(false);
     const [isAttributeModalOpen, setIsAttributeModalOpen] = useState(false);
     const [selectedTable, setSelectedTable] = useState<Table | null>(null);
 
@@ -53,6 +55,28 @@ const DatabaseDetailPage = () => {
         } catch (err: any) {
             console.error('Error importing CSV:', err);
             setError(err.message || 'Failed to import CSV file');
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    const handleCreateTable = async (formData: { name: string; description: string; attributes: AttributeFormData[] }) => {
+        if (!id) return;
+        
+        try {
+            setIsLoading(true);
+            setError(null);
+            const tableData: TableFormData = {
+                name: formData.name,
+                description: formData.description,
+                attributes: formData.attributes
+            };
+            await DatabaseService.createTable(parseInt(id), tableData);
+            await refreshDatabase(id);
+            setIsCreateTableModalOpen(false);
+        } catch (err: any) {
+            console.error('Error creating table:', err);
+            throw new Error(err.message || 'Failed to create table');
         } finally {
             setIsLoading(false);
         }
@@ -129,6 +153,12 @@ const DatabaseDetailPage = () => {
                             {database?.database_type}
                         </span>
                         <button
+                            onClick={() => setIsCreateTableModalOpen(true)}
+                            className="bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 transition-colors"
+                        >
+                            Create Table
+                        </button>
+                        <button
                             onClick={() => setIsImportCSVModalOpen(true)}
                             className="bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 transition-colors"
                         >
@@ -195,6 +225,14 @@ const DatabaseDetailPage = () => {
                 isOpen={isImportCSVModalOpen}
                 onClose={() => setIsImportCSVModalOpen(false)}
                 onImport={handleImportCSV}
+                isLoading={isLoading}
+            />
+
+            {/* Create Table Modal */}
+            <CreateTableModal
+                isOpen={isCreateTableModalOpen}
+                onClose={() => setIsCreateTableModalOpen(false)}
+                onCreate={handleCreateTable}
                 isLoading={isLoading}
             />
 

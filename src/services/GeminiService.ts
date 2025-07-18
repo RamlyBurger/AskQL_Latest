@@ -1,4 +1,4 @@
-import axios from 'axios';
+import axios, { AxiosError } from 'axios';
 import { DatabaseService } from './DatabaseService';
 
 export interface ChatMessage {
@@ -33,6 +33,8 @@ Important Guidelines:
 
 When you ask about the database, I'll provide specific information about its structure and contents.
 When you need a SQL query, I'll provide it in the most appropriate SQL dialect for your needs.`;
+    private maxRetries = 3;
+    private retryDelay = 1000; // 1 second
 
     constructor(apiKey: string) {
         this.apiKey = apiKey;
@@ -67,6 +69,57 @@ Each table's structure:`;
         }
 
         return `I'm here to help you work with databases and write SQL queries in any dialect. What would you like to know?`;
+    }
+
+    private async callGeminiAPI(message: string, retryCount = 0): Promise<string> {
+        try {
+            if (!this.apiKey) {
+                throw new Error('API key is not configured');
+            }
+
+            const response = await axios.post(
+                `${this.baseUrl}?key=${this.apiKey}`,
+                {
+                    contents: [{
+                        parts: [{
+                            text: message
+                        }]
+                    }]
+                }
+            );
+
+            if (!response.data?.candidates?.[0]?.content?.parts?.[0]?.text) {
+                throw new Error('Invalid response format from Gemini API');
+            }
+
+            return response.data.candidates[0].content.parts[0].text;
+        } catch (error) {
+            if (error instanceof AxiosError) {
+                // Handle specific HTTP errors
+                switch (error.response?.status) {
+                    case 503:
+                        if (retryCount < this.maxRetries) {
+                            console.log(`Gemini API temporarily unavailable, retrying in ${this.retryDelay}ms...`);
+                            await new Promise(resolve => setTimeout(resolve, this.retryDelay));
+                            return this.callGeminiAPI(message, retryCount + 1);
+                        }
+                        throw new Error('Gemini API is temporarily unavailable. Please try again later.');
+                    
+                    case 401:
+                        throw new Error('Invalid API key. Please check your Gemini API configuration.');
+                    
+                    case 400:
+                        throw new Error('Invalid request to Gemini API. Please check your input.');
+                    
+                    case 429:
+                        throw new Error('Rate limit exceeded. Please try again later.');
+                    
+                    default:
+                        throw new Error(`Gemini API error: ${error.response?.data?.error || error.message}`);
+                }
+            }
+            throw error;
+        }
     }
 
     async sendMessage(message: string, database?: any): Promise<string> {
@@ -111,21 +164,13 @@ Rules:
 - Add comments for complex parts of the query
 - Consider query performance and optimization` : 'Please provide a clear and direct answer.'}`;
 
-            const response = await axios.post(
-                `${this.baseUrl}?key=${this.apiKey}`,
-                {
-                    contents: [{
-                        parts: [{
-                            text: contextualizedMessage
-                        }]
-                    }]
-                }
-            );
-
-            return response.data.candidates[0].content.parts[0].text;
+            return await this.callGeminiAPI(contextualizedMessage);
         } catch (error) {
             console.error('Error in Gemini API call:', error);
-            throw new Error('Failed to get response from AI');
+            if (error instanceof Error) {
+                throw error; // Preserve the specific error message
+            }
+            throw new Error('An unexpected error occurred while getting AI response');
         }
     }
 
