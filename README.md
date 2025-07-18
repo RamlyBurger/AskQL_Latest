@@ -1,5 +1,18 @@
 # AskQL - Natural Language Data Analytics Platform
 
+## The Problem
+
+Small businesses and non-technical users often struggle to analyze their financial and business data due to complex tools, the need for SQL or programming knowledge, and expensive analytics solutions. Traditional platforms require technical expertise, making it difficult to:
+- Integrate data from various sources
+- Clean and model data visually
+- Ask questions in plain English
+- Automate reporting and workflows
+- Detect trends, anomalies, and risks
+- Simulate business scenarios
+- Visualize and export insights
+
+These barriers prevent many organizations from making data-driven decisions, predicting issues, and understanding their financial health affordably and intuitively.
+
 ![AskQL Logo](src/assets/askql_logo_rect.png)
 
 ## Overview
@@ -71,9 +84,11 @@ Help small businesses understand their financial health, make data-driven decisi
 
 ### Prerequisites
 
-- Node.js (v18 or higher)
-- npm or yarn
-- PostgreSQL (optional, for production database)
+- [Node.js (v18 or higher)](https://nodejs.org/)
+- [npm](https://www.npmjs.com/) or [yarn](https://yarnpkg.com/)
+- [PostgreSQL](https://www.postgresql.org/download/) (optional, for production database)
+  - Download and install PostgreSQL from the official website for your operating system.
+  - Ensure the PostgreSQL service is running and accessible.
 
 ### Installation
 
