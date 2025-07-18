@@ -1,625 +1,236 @@
-# Natural Language to SQL/Code Data Analysis System
+# AskQL - Natural Language Data Analytics Platform
 
-## 🎯 The Problem
+![AskQL Logo](src/assets/askql_logo_rect.png)
 
-### Business Data Analysis Challenges
+## Overview
 
-Small and medium-sized businesses face numerous challenges when it comes to data analysis:
+AskQL is a powerful, intuitive data analytics platform designed specifically for small business owners and non-technical users. Transform your business data into actionable insights using natural language queries - no SQL or programming skills required.
 
-1. **Technical Barrier**
-   - Most business owners lack SQL expertise
-   - Hiring data analysts is expensive
-   - Traditional BI tools are complex
-   - Learning curve is too steep for busy professionals
+## 🚀 Key Features
 
-2. **Financial Constraints**
-   - Enterprise analytics solutions are costly
-   - Custom development is expensive
-   - Training staff requires significant investment
-   - ROI uncertainty for expensive tools
+### 📊 Data Integration
+- Upload CSV/Excel files directly
+- Connect to accounting software and databases
+- Automated data cleaning and validation
+- Multiple data source support
 
-3. **Data Accessibility**
-   - Critical data trapped in complex databases
-   - Multiple data sources need integration
-   - Real-time access is complicated
-   - Data format inconsistencies
+### 🎨 Visual Data Modeling
+- Automatically generated Entity Relationship Diagrams (ERDs)
+- Interactive schema visualization
+- Drag-and-drop data relationship mapping
+- Real-time schema editing
 
-4. **Decision-Making Delays**
-   - Time lag between question and answer
-   - Dependency on technical staff
-   - Missed business opportunities
-   - Reactive rather than proactive decisions
+### 💬 Natural Language Interface
+- Ask business questions in plain English
+- AI-powered query translation
+- Conversational data exploration
+- Voice-to-text support
 
-5. **Industry-Specific Challenges**
-   - Lack of industry benchmarking
-   - Complex regulatory requirements
-   - Unique business metrics
-   - Specialized reporting needs
+### 🤖 Automated Workflows
+- Build custom data pipelines
+- Schedule automated reports
+- Email notifications and alerts
+- Workflow automation (Airflow DAGs)
 
-### Impact on Businesses
-
-These challenges lead to several critical issues:
-
-1. **Financial Impact**
-   - Missed optimization opportunities
-   - Inefficient resource allocation
-   - Cash flow management problems
-   - Suboptimal pricing strategies
-
-2. **Operational Inefficiencies**
-   - Delayed response to market changes
-   - Inventory management issues
-   - Customer service limitations
-   - Resource allocation problems
-
-3. **Competitive Disadvantage**
-   - Slower market adaptation
-   - Limited innovation capability
-   - Reduced market understanding
-   - Missed growth opportunities
-
-4. **Risk Management**
-   - Delayed problem detection
-   - Inadequate compliance monitoring
-   - Poor fraud detection
-   - Limited predictive capabilities
-
-## 💡 Our Solution
-
-The Natural Language to SQL/Code Data Analysis System addresses these challenges through an innovative approach:
-
-### 1. Democratizing Data Access
-
-Our system breaks down the technical barrier by:
-- Converting natural language questions into SQL queries
-- Providing intuitive visual interfaces
-- Automating complex data operations
-- Offering context-aware assistance
-
-### 2. Cost-Effective Analysis
-
-We make sophisticated data analysis accessible by:
-- Eliminating the need for specialized staff
-- Reducing training requirements
-- Providing immediate value
-- Scaling with business needs
-
-### 3. Comprehensive Integration
-
-The system offers:
-- Multiple data source connections
-- Automated data cleaning
-- Format standardization
-- Real-time synchronization
-
-### 4. Intelligent Insights
-
-Powered by AI, the system provides:
-- Automated pattern detection
-- Predictive analytics
-- Industry benchmarking
-- Personalized recommendations
-
-### 5. Business-Specific Adaptation
-
-The system adapts to various industries through:
-- Customizable metrics
-- Industry-specific templates
-- Regulatory compliance tools
-- Flexible reporting options
-
-## 🎉 Success Stories
-
-### Retail Business
-A small retail business increased their profit margins by 15% after using our system to optimize inventory and pricing strategies through natural language queries.
-
-### Manufacturing Company
-A manufacturing firm reduced operational costs by 20% by identifying inefficiencies through automated data analysis and predictive maintenance alerts.
-
-### Healthcare Provider
-A healthcare provider improved patient satisfaction by 25% using our system to analyze patient feedback and optimize resource allocation.
-
-## 📊 Impact Metrics
-
-Our system has demonstrated significant impact across various metrics:
-
-1. **Time Savings**
-   - 75% reduction in time to insight
-   - 90% faster query generation
-   - 60% reduction in report creation time
-
-2. **Cost Reduction**
-   - 50% lower analysis costs
-   - 70% reduction in training expenses
-   - 40% decrease in operational inefficiencies
-
-3. **Business Performance**
-   - 30% average revenue increase
-   - 25% improvement in customer retention
-   - 45% better inventory management
-
-4. **User Adoption**
-   - 95% user satisfaction rate
-   - 80% reduction in technical support needs
-   - 3x increase in data-driven decisions
-
-## 🔮 Future Vision
-
-Our roadmap extends beyond current features to include:
-
-### 1. Advanced Analytics
-- Machine learning model integration
-- Automated insight generation
-- Complex pattern recognition
-- Predictive modeling
-
-### 2. Enhanced Integration
-- More data source connectors
-- Real-time data processing
-- Automated ETL processes
-- Cloud integration
-
-### 3. Collaboration Features
-- Team workspaces
-- Shared insights
-- Collaborative analysis
-- Knowledge management
-
-### 4. Industry Solutions
-- Industry-specific templates
-- Compliance frameworks
-- Specialized metrics
-- Best practice guides
-
-### 5. AI Enhancements
-- Natural language generation
-- Automated recommendations
+### 🧠 AI-Powered Insights
 - Anomaly detection
 - Trend prediction
+- Personalized business recommendations
+- Risk assessment and alerts
 
-## 🌟 Why Choose Our Solution?
+### 🎙️ Voice & Chatbot Interaction
+- Hands-free analytics
+- Conversational querying
+- Voice commands
+- Interactive AI assistant
 
-1. **Immediate Value**
-   - No technical expertise required
-   - Instant insights from day one
-   - Rapid ROI realization
-   - Minimal training needed
+### 🔬 Simulation & Experimentation
+- "What-if" scenario modeling
+- Business change simulation
+- Outcome projection
+- Performance benchmarking
 
-2. **Scalability**
-   - Grows with your business
-   - Flexible deployment options
-   - Customizable features
-   - Modular architecture
+### 📈 Visualization & Reporting
+- Interactive dashboards
+- Custom charts and graphs
+- Exportable reports
+- Real-time monitoring
 
-3. **Cost-Effectiveness**
-   - Reduced operational costs
-   - No specialized staff required
-   - Minimal training investment
-   - Quick implementation
+## 🛤️ User Journey
 
-4. **Future-Proof**
-   - Regular updates
-   - Growing feature set
-   - Technology adaptation
-   - Community support
+1. **Home** → Start your analytics journey
+2. **Database Page** → Create, select, upload, or connect your data sources
+3. **ERD Page** → Visualize and edit your data schema
+4. **Insights & Analytics Page** → Chat with your data, run analysis, create simulations, and export results
 
-## 🔧 Technical Implementation Guide
+## 🎯 Goal
 
-### System Architecture
+Help small businesses understand their financial health, make data-driven decisions, predict potential issues, benchmark performance, and get actionable insights - all affordably and intuitively.
 
-#### 1. Frontend Architecture (React + TypeScript)
-```typescript
-// Example component structure
-src/
-├── components/
-│   ├── database/
-│   │   ├── DatabaseCreator.tsx      // Database creation wizard
-│   │   ├── SqlEditor.tsx            // SQL input with syntax highlighting
-│   │   └── DatabaseList.tsx         // Database management interface
-│   ├── erd/
-│   │   ├── ErdCanvas.tsx           // Interactive ERD editor
-│   │   ├── TableNode.tsx           // ERD table representation
-│   │   └── RelationshipLine.tsx    // ERD relationship visualization
-│   └── nlp/
-│       ├── QueryInput.tsx          // Natural language query interface
-│       └── SuggestionEngine.tsx    // Query suggestion system
+## 🚀 Getting Started
+
+### Prerequisites
+
+- Node.js (v18 or higher)
+- npm or yarn
+- PostgreSQL (optional, for production database)
+
+### Installation
+
+1. **Clone the repository**
+   ```bash
+   git clone <repository-url>
+   cd AskQL_Latest
+   ```
+
+2. **Install frontend dependencies**
+   ```bash
+   npm install
+   ```
+
+3. **Install backend dependencies**
+   ```bash
+   cd server
+   npm install
+   cd ..
+   ```
+
+### Development Setup
+
+1. **Start the frontend development server**
+   ```bash
+   npm run dev
+   ```
+   The frontend will be available at `http://localhost:5173`
+
+2. **Start the backend server** (in a new terminal)
+   ```bash
+   cd server
+   npm run dev
+   ```
+   The backend API will be available at `http://localhost:3000`
+
+### Environment Configuration
+
+Create a `.env` file in the server directory with the following variables:
+
+```env
+# Database Configuration
+DATABASE_URL=postgresql://username:password@localhost:5432/askql
+
+# AI Configuration
+GEMINI_API_KEY=your_gemini_api_key_here
+
+# Server Configuration
+PORT=3000
+NODE_ENV=development
 ```
 
-#### 2. State Management
-```typescript
-// Example Redux slice for database management
-interface DatabaseState {
-  databases: Database[];
-  currentDatabase: Database | null;
-  erdData: ErdData;
-  queryHistory: Query[];
-}
+## 📁 Project Structure
 
-const databaseSlice = createSlice({
-  name: 'database',
-  initialState,
-  reducers: {
-    createDatabase: (state, action) => {
-      // Database creation logic
-    },
-    updateErd: (state, action) => {
-      // ERD update logic
-    },
-    // Other reducers...
-  }
-});
+```
+AskQL_Latest/
+├── src/                    # Frontend React application
+│   ├── components/         # Reusable UI components
+│   ├── pages/             # Application pages
+│   ├── services/          # API services
+│   ├── styles/            # CSS styles
+│   └── utils/             # Utility functions
+├── server/                # Backend Node.js application
+│   ├── src/
+│   │   ├── controllers/   # API controllers
+│   │   ├── entities/      # Database entities
+│   │   ├── routes/        # API routes
+│   │   ├── services/      # Business logic
+│   │   └── utils/         # Server utilities
+│   └── public/            # Static files
+├── datasets/              # Sample datasets
+└── public/                # Frontend static assets
 ```
 
-#### 3. Natural Language Processing Pipeline
-```typescript
-interface NLPPipeline {
-  preprocess: (input: string) => string;
-  tokenize: (text: string) => string[];
-  parseIntent: (tokens: string[]) => QueryIntent;
-  generateSQL: (intent: QueryIntent) => string;
-}
+## 🛠️ Available Scripts
 
-// Example implementation
-class QueryProcessor implements NLPPipeline {
-  preprocess(input: string) {
-    // Text normalization
-    // Remove unnecessary whitespace
-    // Handle special characters
-  }
+### Frontend
+- `npm run dev` - Start development server
+- `npm run build` - Build for production
+- `npm run preview` - Preview production build
+- `npm run lint` - Run ESLint
 
-  tokenize(text: string) {
-    // Split into tokens
-    // Identify entities
-    // Tag parts of speech
-  }
+### Backend
+- `npm run dev` - Start development server with hot reload
+- `npm run build` - Build TypeScript to JavaScript
+- `npm run start` - Start production server
+- `npm run migration:generate` - Generate database migrations
+- `npm run migration:run` - Run database migrations
 
-  parseIntent(tokens: string[]) {
-    // Identify query type
-    // Extract entities
-    // Determine relationships
-  }
+## 🔧 Technology Stack
 
-  generateSQL(intent: QueryIntent) {
-    // Convert intent to SQL
-    // Optimize query
-    // Validate syntax
-  }
-}
-```
+### Frontend
+- **React 19** - Modern UI library
+- **TypeScript** - Type-safe JavaScript
+- **Vite** - Fast build tool
+- **Tailwind CSS** - Utility-first CSS framework
+- **Framer Motion** - Animation library
+- **Chart.js** - Data visualization
+- **React Query** - Data fetching and caching
 
-### Core Technologies and Implementation
+### Backend
+- **Node.js** - JavaScript runtime
+- **Express** - Web framework
+- **TypeScript** - Type-safe JavaScript
+- **TypeORM** - Database ORM
+- **PostgreSQL** - Primary database
+- **SQLite** - In-memory database (via sql.js)
+- **Google Gemini AI** - Natural language processing
 
-#### 1. SQL Parser and ERD Generator
+## 📊 Features in Detail
 
-```typescript
-// SQL parsing system
-interface SQLParser {
-  parseSchema: (sql: string) => DatabaseSchema;
-  validateSyntax: (sql: string) => boolean;
-  extractTables: (sql: string) => Table[];
-  extractRelationships: (sql: string) => Relationship[];
-}
+### Data Upload & Import
+- Drag-and-drop CSV/Excel upload
+- Real-time data validation
+- Automatic data type detection
+- Data preview and confirmation
 
-// ERD generation system
-interface ERDGenerator {
-  generateFromSchema: (schema: DatabaseSchema) => ERDData;
-  updateLayout: (erd: ERDData) => ERDData;
-  exportToSQL: (erd: ERDData) => string;
-}
-```
+### Natural Language Queries
+- "Show me our revenue trends for the last 6 months"
+- "Which products are performing best?"
+- "What's our customer acquisition cost?"
+- "Find anomalies in our sales data"
 
-#### 2. Natural Language Understanding
+### Visual Analytics
+- Interactive charts and graphs
+- Customizable dashboards
+- Real-time data updates
+- Export capabilities (PDF, PNG, CSV)
 
-```typescript
-// Intent recognition system
-interface IntentRecognizer {
-  recognizeIntent: (query: string) => QueryIntent;
-  extractEntities: (query: string) => Entity[];
-  suggestQueries: (context: QueryContext) => string[];
-}
+### AI-Powered Insights
+- Automated pattern detection
+- Predictive analytics
+- Risk assessment
+- Personalized recommendations
 
-// Query generation system
-interface QueryGenerator {
-  generateSQL: (intent: QueryIntent) => string;
-  optimizeQuery: (sql: string) => string;
-  validateQuery: (sql: string) => ValidationResult;
-}
-```
+## 🤝 Contributing
 
-#### 3. Data Analysis Engine
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add some amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
 
-```typescript
-// Analysis pipeline
-interface AnalysisPipeline {
-  preprocessData: (data: RawData) => CleanData;
-  analyzePatterns: (data: CleanData) => Patterns[];
-  generateInsights: (patterns: Patterns[]) => Insight[];
-  createVisualizations: (data: CleanData) => Visualization[];
-}
-```
+## 📝 License
 
-### Implementation Steps
+This project is licensed under the MIT License - see the LICENSE file for details.
 
-#### 1. Database Management System
+## 🆘 Support
 
-1. **Database Creation**
-```typescript
-// Database creation handler
-async function createDatabase(input: DatabaseInput): Promise<Database> {
-  // Validate input
-  const validationResult = validateDatabaseInput(input);
-  if (!validationResult.isValid) {
-    throw new Error(validationResult.errors.join(', '));
-  }
+For support, email support@askql.com or join our community Discord server.
 
-  // Parse SQL schema
-  const schema = await sqlParser.parseSchema(input.sqlScript);
+## 🙏 Acknowledgments
 
-  // Generate ERD
-  const erdData = erdGenerator.generateFromSchema(schema);
+- Built with modern web technologies
+- Powered by Google Gemini AI
+- Designed for small business success
 
-  // Create database record
-  const database = await DatabaseModel.create({
-    name: input.name,
-    description: input.description,
-    schema,
-    erdData,
-  });
+---
 
-  return database;
-}
-```
-
-2. **ERD Management**
-```typescript
-// ERD update handler
-class ERDManager {
-  updateERD(changes: ERDChanges): ERDData {
-    // Validate changes
-    this.validateChanges(changes);
-
-    // Apply changes to ERD
-    const updatedERD = this.applyChanges(this.currentERD, changes);
-
-    // Regenerate layout if needed
-    if (changes.requiresLayout) {
-      return this.regenerateLayout(updatedERD);
-    }
-
-    return updatedERD;
-  }
-
-  private validateChanges(changes: ERDChanges) {
-    // Implement validation logic
-  }
-
-  private applyChanges(erd: ERDData, changes: ERDChanges): ERDData {
-    // Implement change application logic
-  }
-
-  private regenerateLayout(erd: ERDData): ERDData {
-    // Implement layout regeneration logic
-  }
-}
-```
-
-#### 2. Natural Language Processing
-
-1. **Query Processing**
-```typescript
-// Query processor implementation
-class QueryProcessor {
-  async processQuery(query: string): Promise<QueryResult> {
-    // Preprocess query
-    const preprocessed = this.preprocess(query);
-
-    // Recognize intent
-    const intent = await this.intentRecognizer.recognizeIntent(preprocessed);
-
-    // Generate SQL
-    const sql = this.queryGenerator.generateSQL(intent);
-
-    // Execute query
-    const result = await this.executeQuery(sql);
-
-    // Generate insights
-    const insights = await this.insightGenerator.generateInsights(result);
-
-    return {
-      sql,
-      result,
-      insights,
-    };
-  }
-}
-```
-
-2. **Context Management**
-```typescript
-// Context manager implementation
-class QueryContextManager {
-  private context: QueryContext;
-
-  updateContext(query: string, result: QueryResult) {
-    // Update context based on new query and result
-    this.context = {
-      ...this.context,
-      recentQueries: [...this.context.recentQueries, query],
-      relevantTables: this.extractRelevantTables(result),
-      userIntent: this.updateUserIntent(query),
-    };
-  }
-
-  getSuggestions(): string[] {
-    // Generate suggestions based on context
-    return this.suggestionEngine.generateSuggestions(this.context);
-  }
-}
-```
-
-#### 3. Analysis Engine
-
-```typescript
-// Analysis engine implementation
-class AnalysisEngine {
-  async analyzeData(data: RawData): Promise<Analysis> {
-    // Preprocess data
-    const cleanData = await this.preprocessor.clean(data);
-
-    // Detect patterns
-    const patterns = await this.patternDetector.detect(cleanData);
-
-    // Generate insights
-    const insights = await this.insightGenerator.generate(patterns);
-
-    // Create visualizations
-    const visualizations = await this.visualizer.create(cleanData, patterns);
-
-    return {
-      patterns,
-      insights,
-      visualizations,
-    };
-  }
-}
-```
-
-### Development Environment Setup
-
-1. **Prerequisites Installation**
-```bash
-# Install Node.js and npm
-curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
-sudo apt-get install -y nodejs
-
-# Install development tools
-npm install -g typescript
-npm install -g vite
-```
-
-2. **Project Setup**
-```bash
-# Create new project
-npm create vite@latest nl-sql-analysis -- --template react-ts
-
-# Install dependencies
-cd nl-sql-analysis
-npm install @reduxjs/toolkit react-redux
-npm install @types/node @types/react @types/react-dom
-npm install tailwindcss postcss autoprefixer
-npm install jointjs @types/jointjs
-```
-
-3. **Configuration Files**
-
-```typescript
-// vite.config.ts
-import { defineConfig } from 'vite';
-import react from '@vitejs/plugin-react';
-import path from 'path';
-
-export default defineConfig({
-  plugins: [react()],
-  resolve: {
-    alias: {
-      '@': path.resolve(__dirname, './src'),
-    },
-  },
-});
-
-// tsconfig.json
-{
-  "compilerOptions": {
-    "target": "ES2020",
-    "useDefineForClassFields": true,
-    "lib": ["ES2020", "DOM", "DOM.Iterable"],
-    "module": "ESNext",
-    "skipLibCheck": true,
-    "moduleResolution": "bundler",
-    "allowImportingTsExtensions": true,
-    "resolveJsonModule": true,
-    "isolatedModules": true,
-    "noEmit": true,
-    "jsx": "react-jsx",
-    "strict": true,
-    "noUnusedLocals": true,
-    "noUnusedParameters": true,
-    "noFallthroughCasesInSwitch": true,
-    "paths": {
-      "@/*": ["./src/*"]
-    }
-  },
-  "include": ["src"],
-  "references": [{ "path": "./tsconfig.node.json" }]
-}
-```
-
-### Testing Strategy
-
-1. **Unit Tests**
-```typescript
-// Example Jest test for QueryProcessor
-describe('QueryProcessor', () => {
-  let processor: QueryProcessor;
-
-  beforeEach(() => {
-    processor = new QueryProcessor();
-  });
-
-  test('should correctly process simple query', async () => {
-    const query = 'Show me sales from last month';
-    const result = await processor.processQuery(query);
-    
-    expect(result.sql).toContain('SELECT');
-    expect(result.sql).toContain('FROM sales');
-    expect(result.sql).toContain('WHERE');
-  });
-});
-```
-
-2. **Integration Tests**
-```typescript
-// Example integration test
-describe('Database Creation Flow', () => {
-  test('should create database and generate ERD', async () => {
-    const input = {
-      name: 'Test DB',
-      description: 'Test database',
-      sqlScript: 'CREATE TABLE users...',
-    };
-
-    const database = await createDatabase(input);
-    
-    expect(database.name).toBe(input.name);
-    expect(database.erdData).toBeDefined();
-    expect(database.schema).toBeDefined();
-  });
-});
-```
-
-### Deployment Configuration
-
-```yaml
-# Example Docker configuration
-version: '3.8'
-services:
-  frontend:
-    build:
-      context: .
-      dockerfile: Dockerfile.frontend
-    ports:
-      - "80:80"
-    environment:
-      - NODE_ENV=production
-      - API_URL=http://api:3000
-
-  api:
-    build:
-      context: .
-      dockerfile: Dockerfile.api
-    ports:
-      - "3000:3000"
-    environment:
-      - NODE_ENV=production
-      - DATABASE_URL=postgresql://user:password@db:5432/nlsql
-```
+**AskQL** - Making data analytics accessible to everyone, one question at a time.
