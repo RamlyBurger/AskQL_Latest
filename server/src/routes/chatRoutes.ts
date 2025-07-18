@@ -1,13 +1,8 @@
-import express from 'express';
-import ChatController from '../controllers/ChatController';
+import { Router } from 'express';
+import { AIAgentController } from '../controllers/AIAgentController';
 
-const router = express.Router();
+const router = Router();
 
-// Chat History
-router.get('/history', ChatController.getChatHistory);
-router.post('/messages', ChatController.addMessage);
-
-// File Upload
-router.post('/upload', ChatController.uploadFile);
+router.post('/chat', AIAgentController.chat);
 
 export default router; 

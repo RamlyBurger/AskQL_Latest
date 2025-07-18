@@ -18,99 +18,108 @@ export class TableDataController {
     private tableRepository: Repository<Table>;
     private attributeRepository: Repository<Attribute>;
     private databaseRepository: Repository<Database>;
-    private SQL: SqlJsStatic | null = null; // Store the initialized SQL.js instance
-    private dbCache: Map<number, SQLiteDB> = new Map(); // Cache SQLite DBs by database ID
+    private SQL: SqlJsStatic | null = null;
+    private dbCache: Map<number, SQLiteDB> = new Map();
 
     constructor() {
         this.tableDataRepository = AppDataSource.getRepository(TableData);
         this.tableRepository = AppDataSource.getRepository(Table);
         this.attributeRepository = AppDataSource.getRepository(Attribute);
         this.databaseRepository = AppDataSource.getRepository(Database);
-        this.initSQLite();
     }
 
     private async initSQLite() {
+        if (this.SQL) return;
+
         try {
-            // Import sql.js dynamically to avoid issues with SSR
             const initSqlJs = (await import('sql.js')).default;
             this.SQL = await initSqlJs({
-                // Use local wasm file
-                locateFile: (filename: string) => path.join(process.cwd(), 'public', filename)
+                locateFile: (filename: string) => path.join(__dirname, '..', '..', 'public', filename)
             });
             console.log('SQL.js initialized successfully');
         } catch (error) {
             console.error('Failed to initialize SQL.js:', error);
+            throw error;
         }
     }
 
     private async getOrCreateSQLiteDB(databaseId: number): Promise<SQLiteDB> {
+        if (!this.SQL) {
+            await this.initSQLite();
+        }
+
         if (this.dbCache.has(databaseId)) {
             return this.dbCache.get(databaseId)!;
         }
 
+        // Get database with tables and their attributes
         const database = await this.databaseRepository.findOne({
             where: { id: databaseId },
             relations: ['tables', 'tables.attributes']
         });
 
-        if (!database || !this.SQL) {
-            throw new Error('Database not found or SQLite not initialized');
+        if (!database) {
+            throw new Error('Database not found');
         }
 
         // Create new SQLite database
-        const db = new this.SQL.Database();
+        const db = new this.SQL!.Database();
 
         // Create tables and insert data
         for (const table of database.tables) {
-            // Get table data
-            const tableData = await this.tableDataRepository.find({
-                where: { table_id: table.id },
-                order: { id: 'ASC' }
-            });
-
-            // Get column definitions
-            const columns = table.attributes.map(attr => {
-                let sqlType = 'TEXT';
-                switch (attr.data_type.toLowerCase()) {
-                    case 'number':
-                    case 'integer':
-                    case 'int':
-                        sqlType = 'INTEGER';
-                        break;
-                    case 'float':
-                    case 'double':
-                    case 'decimal':
-                        sqlType = 'REAL';
-                        break;
-                    case 'boolean':
-                        sqlType = 'INTEGER';
-                        break;
-                    default:
-                        sqlType = 'TEXT';
-                }
-                return `${attr.name} ${sqlType}`;
-            });
-
-            // Create table
-            const createTableSQL = `CREATE TABLE ${table.name} (${columns.join(', ')})`;
-            db.run(createTableSQL);
-
-            // Insert data
-            if (tableData.length > 0) {
-                const columnNames = table.attributes.map(attr => attr.name);
-                const placeholders = columnNames.map(() => '?').join(', ');
-                const insertSQL = `INSERT INTO ${table.name} (${columnNames.join(', ')}) VALUES (${placeholders})`;
-
-                // Prepare statement
-                const stmt = db.prepare(insertSQL);
-
-                // Insert each row
-                tableData.forEach((row: TableData) => {
-                    const values = columnNames.map(col => row.row_data[col]);
-                    stmt.run(values);
+            try {
+                // Get table data
+                const tableData = await this.tableDataRepository.find({
+                    where: { table_id: table.id },
+                    order: { id: 'ASC' }
                 });
 
-                stmt.free();
+                // Get column definitions
+                const columns = table.attributes.map(attr => {
+                    let sqlType = 'TEXT';
+                    switch (attr.data_type.toLowerCase()) {
+                        case 'integer':
+                        case 'int':
+                        case 'number':
+                            sqlType = 'INTEGER';
+                            break;
+                        case 'numeric':
+                        case 'decimal':
+                        case 'float':
+                        case 'double':
+                            sqlType = 'REAL';
+                            break;
+                        case 'boolean':
+                            sqlType = 'INTEGER';
+                            break;
+                        default:
+                            sqlType = 'TEXT';
+                    }
+                    return `${this.escapeIdentifier(attr.name)} ${sqlType}`;
+                });
+
+                // Create table
+                const createTableSQL = `CREATE TABLE ${this.escapeIdentifier(table.name)} (${columns.join(', ')})`;
+                console.log('Creating table:', createTableSQL);
+                db.run(createTableSQL);
+
+                // Insert data
+                if (tableData.length > 0) {
+                    const columnNames = table.attributes.map(attr => this.escapeIdentifier(attr.name));
+                    const placeholders = columnNames.map(() => '?').join(', ');
+                    const insertSQL = `INSERT INTO ${this.escapeIdentifier(table.name)} (${columnNames.join(', ')}) VALUES (${placeholders})`;
+                    console.log('Inserting data with SQL:', insertSQL);
+
+                    const stmt = db.prepare(insertSQL);
+                    tableData.forEach(row => {
+                        const values = table.attributes.map(attr => row.row_data[attr.name]);
+                        stmt.run(values);
+                    });
+                    stmt.free();
+                }
+            } catch (error) {
+                console.error(`Error creating table ${table.name}:`, error);
+                throw error;
             }
         }
 
@@ -413,6 +422,10 @@ export class TableDataController {
         }
     }
 
+    private escapeIdentifier(identifier: string): string {
+        return `"${identifier.replace(/"/g, '""')}"`;
+    }
+
     async executeQuery(req: Request, res: Response) {
         try {
             const { sql, databaseId } = req.body;
@@ -423,17 +436,25 @@ export class TableDataController {
                 return res.status(400).json({ error: 'SQL query and database ID are required' });
             }
 
-            if (!this.SQL) {
-                console.error('SQLite not initialized');
-                return res.status(500).json({ error: 'SQLite not initialized' });
-            }
-
             try {
                 console.log('Getting SQLite DB for database:', databaseId);
                 const db = await this.getOrCreateSQLiteDB(databaseId);
                 
-                console.log('Executing SQL query:', sql);
-                const results: SQLiteResult[] = db.exec(sql);
+                // Get table name from query
+                const tableMatch = sql.match(/from\s+(\w+)/i);
+                if (!tableMatch) {
+                    return res.status(400).json({ error: 'Could not determine table name from query' });
+                }
+                const tableName = tableMatch[1];
+
+                // Modify the query to use escaped table name
+                const modifiedSql = sql.replace(
+                    new RegExp(`from\\s+${tableName}`, 'i'),
+                    `FROM ${this.escapeIdentifier(tableName)}`
+                );
+                
+                console.log('Executing SQL query:', modifiedSql);
+                const results: SQLiteResult[] = db.exec(modifiedSql);
                 console.log('Query results:', results);
 
                 if (results.length === 0) {

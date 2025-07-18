@@ -1,15 +1,17 @@
 import { v4 as uuidv4 } from 'uuid';
+import axios from 'axios'; // Added axios import
 
 export interface ChatMessage {
-    id?: string;
+    id: string;
     session_id: string;
     sender: 'user' | 'bot';
     content: string;
-    message_type: 'text' | 'image' | 'file' | 'voice';
+    message_type: 'text' | 'image' | 'file' | 'voice' | 'combined';
+    created_at: Date;
+    sql_query?: string;
     file_url?: string;
     file_name?: string;
-    sql_query?: string;
-    created_at: Date;
+    query_type?: string;
 }
 
 export interface ChatSession {
@@ -126,6 +128,25 @@ class ChatService {
             reader.onerror = reject;
             reader.readAsDataURL(file);
         });
+    }
+
+    static async deleteSession(sessionId: string): Promise<void> {
+        try {
+            // Delete session
+            const sessionsJson = localStorage.getItem(this.SESSIONS_KEY) || '[]';
+            const allSessions = JSON.parse(sessionsJson) as ChatSession[];
+            const updatedSessions = allSessions.filter(s => s.id !== sessionId);
+            localStorage.setItem(this.SESSIONS_KEY, JSON.stringify(updatedSessions));
+
+            // Delete associated messages
+            const messagesJson = localStorage.getItem(this.MESSAGES_KEY) || '[]';
+            const allMessages = JSON.parse(messagesJson) as ChatMessage[];
+            const updatedMessages = allMessages.filter(m => m.session_id !== sessionId);
+            localStorage.setItem(this.MESSAGES_KEY, JSON.stringify(updatedMessages));
+        } catch (error) {
+            console.error('Error deleting session:', error);
+            throw new Error('Failed to delete chat session');
+        }
     }
 
     // Clear all chat data (for testing/debugging)

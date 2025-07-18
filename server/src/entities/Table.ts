@@ -2,7 +2,7 @@ import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateCol
 import { Database } from "./Database";
 import { Attribute } from "./Attribute";
 
-@Entity()
+@Entity('tables')
 export class Table {
     @PrimaryGeneratedColumn()
     id: number;

@@ -1,15 +1,14 @@
-import express from 'express';
+import { Router } from 'express';
 import multer from 'multer';
-import GeminiController from '../controllers/GeminiController';
+import { GeminiController } from '../controllers/GeminiController';
+import { AIAgentController } from '../controllers/AIAgentController';
 
-const router = express.Router();
+const router = Router();
 
 // Configure multer for file uploads
 const storage = multer.diskStorage({
-    destination: function (req, file, cb) {
-        cb(null, 'uploads/');
-    },
-    filename: function (req, file, cb) {
+    destination: 'uploads/',
+    filename: (req, file, cb) => {
         const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
         cb(null, file.fieldname + '-' + uniqueSuffix + '-' + file.originalname);
     }
@@ -17,22 +16,16 @@ const storage = multer.diskStorage({
 
 const upload = multer({ storage: storage });
 
-// Column type detection endpoint
-router.post('/detect-types', GeminiController.detectColumnTypes.bind(GeminiController));
+// AI Agent chat endpoint
+router.post('/chat', AIAgentController.chat);
 
-// Chat endpoint (text-based)
-router.post('/chat', GeminiController.chat.bind(GeminiController));
+// CSV column type detection
+router.post('/detect-column-types', GeminiController.detectColumnTypes);
 
-// Multiple images processing endpoint
-router.post('/process-images', GeminiController.processImages.bind(GeminiController));
-
-// Single image processing endpoint (legacy)
-router.post('/process-image', upload.single('image'), GeminiController.processImage.bind(GeminiController));
-
-// File processing endpoint
-router.post('/process-file', upload.single('file'), GeminiController.processFile.bind(GeminiController));
-
-// Voice transcription endpoint
-router.post('/transcribe-voice', upload.single('audio'), GeminiController.transcribeVoice.bind(GeminiController));
+// Media processing endpoints
+router.post('/process-image', upload.single('image'), GeminiController.processImage);
+router.post('/process-images', upload.array('images'), GeminiController.processImages);
+router.post('/process-file', upload.single('file'), GeminiController.processFile);
+router.post('/transcribe-voice', upload.single('audio'), GeminiController.transcribeVoice);
 
 export default router; 

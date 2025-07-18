@@ -1,7 +1,7 @@
 import { Entity, PrimaryGeneratedColumn, Column, OneToMany, CreateDateColumn, UpdateDateColumn } from 'typeorm';
 import { Table } from './Table';
 
-@Entity('database')
+@Entity('databases')
 export class Database {
     @PrimaryGeneratedColumn()
     id: number;

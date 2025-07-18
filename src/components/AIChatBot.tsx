@@ -10,14 +10,30 @@ import ChatService from '../services/ChatService';
 import type { ChatMessage as DBChatMessage, ChatSession } from '../services/ChatService';
 import type { MessageType } from '../services/GeminiService';
 
+// Update type definitions
+type ExtendedMessageType = 'text' | 'image' | 'file' | 'voice' | 'combined';
+
+type AnalysisStage = 'intent' | 'planning' | 'processing';
+
+interface QueryType {
+    type: string;
+    explanation: string;
+}
+
+interface AIResponse {
+    response: string;
+    queryType?: QueryType;
+}
+
 interface ChatMessage {
     sender: 'user' | 'bot';
     content: string;
     timestamp: Date;
     sql?: string;
-    type?: MessageType;
+    type?: ExtendedMessageType;
     fileUrl?: string;
     fileName?: string;
+    queryType?: QueryType;
     attachments?: Array<{
         type: string;
         url: string;
@@ -30,7 +46,8 @@ interface Attachment {
     file: File;
     type: 'image' | 'file' | 'voice';
     previewUrl?: string;
-    duration?: number; // Add duration for voice messages
+    duration?: number;
+    aiResponse?: string;
 }
 
 interface ChatHistory {
@@ -47,6 +64,161 @@ interface AIChatBotProps {
 
 const MAX_ATTACHMENTS = 5;
 
+// Add interfaces for action handling
+interface Action {
+    type: string;
+    explanation: string;
+    priority: number;
+}
+
+interface ActionResponse {
+    type: string;
+    explanation: string;
+    response: string;
+}
+
+interface AIResponse {
+    actionPlan: Action[];
+    responses: ActionResponse[];
+}
+
+// Update ThinkingProcess component to handle database-focused actions
+const ThinkingProcess: React.FC<{ actions: Action[]; currentActionIndex: number }> = ({ actions, currentActionIndex }) => {
+    const [dots, setDots] = useState('');
+    const [stage, setStage] = useState(0);
+
+    const stages = {
+        'SQL_QUERY': [
+            'Analyzing query intent...',
+            'Understanding database schema...',
+            'Generating SQL query...',
+            'Preparing explanation...'
+        ],
+        'DATABASE_MODIFICATION': [
+            'Analyzing modification request...',
+            'Checking database schema...',
+            'Planning changes...',
+            'Preparing implementation steps...'
+        ],
+        'GENERAL': [
+            'Understanding question...',
+            'Analyzing database concepts...',
+            'Preparing explanation...'
+        ],
+        'NOT_RELEVANT': [
+            'Analyzing query...',
+            'Checking database relevance...',
+            'Preparing response...'
+        ]
+    };
+
+    useEffect(() => {
+        const dotsInterval = setInterval(() => {
+            setDots(prev => prev.length >= 3 ? '' : prev + '.');
+        }, 500);
+
+        const stageInterval = setInterval(() => {
+            setStage(prev => {
+                const currentAction = actions[currentActionIndex];
+                const maxStages = (stages[currentAction.type as keyof typeof stages] || stages['NOT_RELEVANT']).length;
+                return prev < maxStages - 1 ? prev + 1 : prev;
+            });
+        }, 2000);
+
+        return () => {
+            clearInterval(dotsInterval);
+            clearInterval(stageInterval);
+        };
+    }, [currentActionIndex, actions]);
+
+    const currentAction = actions[currentActionIndex];
+    const currentStages = stages[currentAction.type as keyof typeof stages] || stages['NOT_RELEVANT'];
+
+    // Get appropriate color based on action type
+    const getActionColor = (type: string) => {
+        switch (type) {
+            case 'SQL_QUERY':
+                return 'text-blue-600';
+            case 'DATABASE_MODIFICATION':
+                return 'text-orange-600';
+            case 'GENERAL':
+                return 'text-green-600';
+            case 'NOT_RELEVANT':
+            default:
+                return 'text-gray-600';
+        }
+    };
+
+    return (
+        <div className="flex flex-col space-y-2 p-3 bg-white rounded-[18px] rounded-bl-[4px] shadow-sm max-w-[85%]">
+            <div className="flex items-center space-x-2">
+                <div className="flex space-x-1">
+                    <div className="w-2 h-2 bg-indigo-500 rounded-full animate-bounce" />
+                    <div className="w-2 h-2 bg-indigo-500 rounded-full animate-bounce delay-100" />
+                    <div className="w-2 h-2 bg-indigo-500 rounded-full animate-bounce delay-200" />
+                </div>
+                <div className="flex flex-col">
+                    <span className="text-sm text-gray-500">AI is thinking...</span>
+                    <span className={`text-xs ${getActionColor(currentAction.type)}`}>
+                        {currentStages[stage]}{dots}
+                    </span>
+                </div>
+            </div>
+            <div className="text-xs text-gray-500">
+                Action {currentActionIndex + 1} of {actions.length}: {currentAction.explanation}
+            </div>
+            {currentActionIndex > 0 && (
+                <div className="text-xs text-green-600">
+                    ✓ Completed {currentActionIndex} previous actions
+                </div>
+            )}
+        </div>
+    );
+};
+
+// Add this component after the ThinkingProcess component
+const IntentAnalysisLoader: React.FC<{ currentStage: string }> = ({ currentStage }) => {
+    const [dots, setDots] = useState('');
+
+    useEffect(() => {
+        const interval = setInterval(() => {
+            setDots(prev => prev.length >= 3 ? '' : prev + '.');
+        }, 500);
+        return () => clearInterval(interval);
+    }, []);
+
+    const stages = {
+        'intent': 'Analyzing intent',
+        'planning': 'Planning response',
+        'processing': 'Processing request',
+    };
+
+    return (
+        <div className="flex flex-col space-y-2 p-3 bg-white rounded-[18px] rounded-bl-[4px] shadow-sm max-w-[85%]">
+            <div className="flex items-center space-x-3">
+                <div className="flex space-x-1">
+                    <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse" />
+                    <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse delay-100" />
+                    <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse delay-200" />
+                </div>
+                <div className="text-sm text-gray-600">
+                    {stages[currentStage as keyof typeof stages]}{dots}
+                </div>
+            </div>
+            <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
+                <div 
+                    className="h-full bg-blue-500 rounded-full transition-all duration-300"
+                    style={{ 
+                        width: currentStage === 'intent' ? '33%' : 
+                               currentStage === 'planning' ? '66%' : '100%' 
+                    }}
+                />
+            </div>
+        </div>
+    );
+};
+
+// Update the main component
 const AIChatBot: React.FC<AIChatBotProps> = ({ apiKey, database }) => {
     const [isOpen, setIsOpen] = useState(false);
     const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -68,6 +240,11 @@ const AIChatBot: React.FC<AIChatBotProps> = ({ apiKey, database }) => {
 
     // Add state for image modal
     const [modalImage, setModalImage] = useState<string | null>(null);
+    const [thinkingType, setThinkingType] = useState<string>('GENERAL');
+    const [currentActionIndex, setCurrentActionIndex] = useState(0);
+    const [actions, setActions] = useState<Action[]>([]);
+    const [analysisStage, setAnalysisStage] = useState<string>('intent');
+    const [isAnalyzing, setIsAnalyzing] = useState(false);
 
     // Function to open image modal
     const openImageModal = (imageUrl: string) => {
@@ -132,15 +309,33 @@ const AIChatBot: React.FC<AIChatBotProps> = ({ apiKey, database }) => {
         try {
             setError(null);
             const sessionMessages = await ChatService.getSessionMessages(sessionId);
-            const formattedMessages: ChatMessage[] = sessionMessages.map(msg => ({
-                sender: msg.sender,
-                content: msg.content,
-                timestamp: new Date(msg.created_at),
-                sql: msg.sql_query,
-                type: msg.message_type,
-                fileUrl: msg.file_url,
-                fileName: msg.file_name
-            }));
+            const formattedMessages: ChatMessage[] = sessionMessages.map(msg => {
+                let content = msg.content;
+                let attachments;
+                
+                // Try to parse JSON content
+                if (msg.message_type === 'combined') {
+                    try {
+                        const parsedContent = JSON.parse(msg.content);
+                        content = parsedContent.text || '';
+                        attachments = parsedContent.attachments;
+                    } catch (e) {
+                        console.error('Error parsing message content:', e);
+                        content = msg.content;
+                    }
+                }
+
+                return {
+                    sender: msg.sender,
+                    content: content,
+                    timestamp: new Date(msg.created_at),
+                    sql: msg.sql_query,
+                    type: msg.message_type,
+                    fileUrl: msg.file_url,
+                    fileName: msg.file_name,
+                    attachments: attachments
+                };
+            });
             setCurrentSessionId(sessionId);
             setMessages(formattedMessages);
             setIsHistoryExpanded(false);
@@ -227,6 +422,7 @@ const AIChatBot: React.FC<AIChatBotProps> = ({ apiKey, database }) => {
         }
     };
 
+    // Update handleSend function
     const handleSend = async () => {
         if ((!inputMessage.trim() && pendingAttachments.length === 0) || !apiKey) {
             return;
@@ -236,19 +432,106 @@ const AIChatBot: React.FC<AIChatBotProps> = ({ apiKey, database }) => {
         }
 
         setError(null);
-        setIsThinking(true);
+        setIsAnalyzing(true);
+        setAnalysisStage('intent');
 
         try {
             // First, upload all attachments
             const uploadedAttachments = await Promise.all(
                 pendingAttachments.map(async (attachment) => {
-                    const { url } = await ChatService.uploadFile(attachment.file);
+                    let response;
+                    if (attachment.type === 'image') {
+                        // For images, we'll use the Gemini endpoint directly
+                        const formData = new FormData();
+                        formData.append('image', attachment.file);
+                        formData.append('apiKey', apiKey);
+                        formData.append('message', inputMessage.trim());
+
+                        // Log the form data
+                        console.log('Form data entries:');
+                        for (let [key, value] of formData.entries()) {
+                            console.log(key, ':', value);
+                        }
+
+                        response = await fetch('/api/gemini/process-image', {
+                            method: 'POST',
+                            body: formData,
+                        });
+                    } else if (attachment.type === 'voice') {
+                        // For voice messages
+                        const formData = new FormData();
+                        formData.append('audio', attachment.file);
+                        formData.append('apiKey', apiKey);
+                        response = await fetch('/api/gemini/transcribe-voice', {
+                            method: 'POST',
+                            body: formData,
+                        });
+                    } else {
+                        // For other files
+                        const formData = new FormData();
+                        formData.append('file', attachment.file);
+                        response = await fetch('/api/chat/upload', {
+                            method: 'POST',
+                            body: formData,
+                        });
+                    }
+
+                    if (!response.ok) {
+                        throw new Error(`Upload failed: ${response.statusText}`);
+                    }
+
+                    const data = await response.json();
                     return {
                         ...attachment,
-                        url
+                        url: data.data?.url || data.url,
+                        aiResponse: data.description || data.response || data.content
                     };
                 })
             );
+
+            // Handle multiple images together if present
+            const imageAttachments = uploadedAttachments.filter(a => a.type === 'image');
+            if (imageAttachments.length > 1) {
+                const formData = new FormData();
+                imageAttachments.forEach((attachment) => {
+                    formData.append('images', attachment.file);
+                });
+                formData.append('apiKey', apiKey);
+                formData.append('message', inputMessage.trim());
+
+                // Log the form data for multiple images
+                console.log('Multiple images form data entries:');
+                for (let [key, value] of formData.entries()) {
+                    console.log(key, ':', value);
+                }
+
+                const response = await fetch('/api/gemini/process-images', {
+                    method: 'POST',
+                    body: formData,
+                });
+
+                if (!response.ok) {
+                    throw new Error(`Failed to process images: ${response.statusText}`);
+                }
+
+                const data = await response.json();
+                const aiResponse = data.response;
+
+                // Save the AI response
+                await ChatService.addMessage({
+                    session_id: currentSessionId!,
+                    sender: 'bot',
+                    content: aiResponse,
+                    message_type: 'text'
+                });
+
+                setMessages(prev => [...prev, {
+                    sender: 'bot',
+                    content: aiResponse,
+                    timestamp: new Date(),
+                    type: 'text'
+                }]);
+            }
 
             // Create a single message that combines text and attachments
             const messageContent = {
@@ -277,51 +560,117 @@ const AIChatBot: React.FC<AIChatBotProps> = ({ apiKey, database }) => {
                 attachments: messageContent.attachments
             }]);
 
-            // Process with AI based on content type
-            let aiResponse;
-            if (pendingAttachments.some(a => a.type === 'image')) {
-                // If there are images, send them together with any text
-                const imageFiles = pendingAttachments
-                    .filter(a => a.type === 'image')
-                    .map(a => a.file);
-                aiResponse = await geminiService.current.sendMessage(
-                    imageFiles,
-                    database,
-                    'image',
-                    inputMessage.trim() // Pass text as additional context
-                );
-            } else if (pendingAttachments.length > 0) {
-                // For other types of attachments
-                const firstAttachment = pendingAttachments[0];
-                aiResponse = await geminiService.current.sendMessage(
-                    firstAttachment.file,
-                    database,
-                    firstAttachment.type,
-                    inputMessage.trim()
-                );
-            } else {
-                // Text only
-                aiResponse = await geminiService.current.sendMessage(
-                    inputMessage.trim(),
-                    database,
-                    'text'
-                );
+            setAnalysisStage('planning');
+            await new Promise(resolve => setTimeout(resolve, 1000)); // Add slight delay for UX
+
+            // If no images or single image, process with regular chat
+            if (imageAttachments.length <= 1) {
+                setAnalysisStage('processing');
+                if (pendingAttachments.some(a => a.type === 'voice')) {
+                    setThinkingType('VOICE_PROCESSING');
+                    // Handle voice messages
+                    const voiceAttachment = pendingAttachments.find(a => a.type === 'voice');
+                    if (voiceAttachment) {
+                        const formData = new FormData();
+                        formData.append('audio', voiceAttachment.file);
+                        formData.append('apiKey', apiKey);
+                        
+                        const response = await fetch('/api/gemini/transcribe-voice', {
+                            method: 'POST',
+                            body: formData,
+                        });
+                        
+                        if (!response.ok) {
+                            throw new Error('Failed to process voice message');
+                        }
+                        
+                        const data = await response.json();
+                        const aiResponse = data.transcription || 'No transcription available';
+
+                        // Save the AI response
+                        await ChatService.addMessage({
+                            session_id: currentSessionId!,
+                            sender: 'bot',
+                            content: aiResponse,
+                            message_type: 'text'
+                        });
+
+                        setMessages(prev => [...prev, {
+                            sender: 'bot',
+                            content: aiResponse,
+                            timestamp: new Date(),
+                            type: 'text'
+                        }]);
+                    }
+                } else if (pendingAttachments.length > 0 && !imageAttachments.length) {
+                    setThinkingType('FILE_PROCESSING');
+                    // For other types of attachments
+                    const firstAttachment = pendingAttachments[0];
+                    const aiResponse = firstAttachment.aiResponse || 'No response available';
+
+                    // Save the AI response
+                    await ChatService.addMessage({
+                        session_id: currentSessionId!,
+                        sender: 'bot',
+                        content: aiResponse,
+                        message_type: 'text'
+                    });
+
+                    setMessages(prev => [...prev, {
+                        sender: 'bot',
+                        content: aiResponse,
+                        timestamp: new Date(),
+                        type: 'text'
+                    }]);
+                } else if (imageAttachments.length === 1) {
+                    setThinkingType('IMAGE_ANALYSIS');
+                    // Single image was already processed above
+                    const aiResponse = imageAttachments[0].aiResponse || 'No image analysis available';
+
+                    // Save the AI response
+                    await ChatService.addMessage({
+                        session_id: currentSessionId!,
+                        sender: 'bot',
+                        content: aiResponse,
+                        message_type: 'text'
+                    });
+
+                    setMessages(prev => [...prev, {
+                        sender: 'bot',
+                        content: aiResponse,
+                        timestamp: new Date(),
+                        type: 'text'
+                    }]);
+                } else {
+                    // Text only
+                    const aiResponse = await geminiService.current.sendMessage(
+                        inputMessage.trim(),
+                        database,
+                        'text'
+                    );
+
+                    if (aiResponse.queryType) {
+                        setThinkingType(aiResponse.queryType.type);
+                    }
+
+                    // Save the AI response
+                    await ChatService.addMessage({
+                        session_id: currentSessionId!,
+                        sender: 'bot',
+                        content: aiResponse.response,
+                        message_type: 'text',
+                        query_type: JSON.stringify(aiResponse.queryType)
+                    });
+
+                    setMessages(prev => [...prev, {
+                        sender: 'bot',
+                        content: aiResponse.response,
+                        timestamp: new Date(),
+                        type: 'text',
+                        queryType: aiResponse.queryType
+                    }]);
+                }
             }
-
-            // Save and display AI response
-            await ChatService.addMessage({
-                session_id: currentSessionId!,
-                sender: 'bot',
-                content: aiResponse,
-                message_type: 'text'
-            });
-
-            setMessages(prev => [...prev, {
-                sender: 'bot',
-                content: aiResponse,
-                timestamp: new Date(),
-                type: 'text'
-            }]);
 
             // Clear input and attachments
             setInputMessage('');
@@ -339,7 +688,10 @@ const AIChatBot: React.FC<AIChatBotProps> = ({ apiKey, database }) => {
             const errorMessage = error instanceof Error ? error.message : 'An error occurred while processing your message';
             setError(errorMessage);
         } finally {
+            setIsAnalyzing(false);
             setIsThinking(false);
+            setCurrentActionIndex(0);
+            setActions([]);
         }
     };
 
@@ -487,6 +839,23 @@ const AIChatBot: React.FC<AIChatBotProps> = ({ apiKey, database }) => {
         }
     };
 
+    // Add delete functionality
+    const handleDeleteSession = async (sessionId: string) => {
+        try {
+            await ChatService.deleteSession(sessionId);
+            // Remove from local state
+            setChatSessions(prev => prev.filter(session => session.id !== sessionId));
+            // If we deleted the current session, clear messages
+            if (sessionId === currentSessionId) {
+                setCurrentSessionId(null);
+                setMessages([]);
+            }
+        } catch (error) {
+            console.error('Error deleting chat session:', error);
+            setError('Failed to delete chat session');
+        }
+    };
+
     // Custom styles for markdown content
     const markdownStyles = {
         code: 'bg-gray-800 text-white px-2 py-1 rounded font-mono text-sm',
@@ -599,18 +968,32 @@ const AIChatBot: React.FC<AIChatBotProps> = ({ apiKey, database }) => {
                                         {chatSessions.map((session) => (
                                             <div
                                                 key={session.id}
-                                                onClick={() => loadChatSession(session.id)}
-                                                className={`px-5 py-3 flex items-center space-x-2 hover:bg-gray-100 cursor-pointer border-b border-gray-200 ${
+                                                className={`px-5 py-3 flex items-center justify-between hover:bg-gray-100 cursor-pointer border-b border-gray-200 ${
                                                     currentSessionId === session.id ? 'bg-gray-100' : ''
                                                 }`}
                                             >
-                                                <FaHistory className="text-gray-500" />
-                                                <div className="flex-1">
-                                                    <div className="text-gray-700">{session.title}</div>
-                                                    <div className="text-xs text-gray-500">
-                                                        {new Date(session.created_at).toLocaleDateString()}
+                                                <div 
+                                                    className="flex items-center space-x-2 flex-1"
+                                                    onClick={() => loadChatSession(session.id)}
+                                                >
+                                                    <FaHistory className="text-gray-500" />
+                                                    <div className="flex-1 min-w-0">
+                                                        <div className="text-gray-700 truncate">{session.title}</div>
+                                                        <div className="text-xs text-gray-500">
+                                                            {new Date(session.created_at).toLocaleDateString()}
+                                                        </div>
                                                     </div>
                                                 </div>
+                                                <button
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        handleDeleteSession(session.id);
+                                                    }}
+                                                    className="p-2 text-gray-400 hover:text-red-500 transition-colors"
+                                                    title="Delete chat"
+                                                >
+                                                    <FaTimes />
+                                                </button>
                                             </div>
                                         ))}
                                     </div>
@@ -641,7 +1024,12 @@ const AIChatBot: React.FC<AIChatBotProps> = ({ apiKey, database }) => {
                                                     {message.content && (
                                                         <div className="mb-2">{message.content}</div>
                                                     )}
-                                                    {message.attachments && (
+                                                    {message.queryType && (
+                                                        <div className="text-xs text-gray-500 mb-1">
+                                                            Query Type: {message.queryType.type}
+                                                        </div>
+                                                    )}
+                                                    {message.attachments && message.attachments.length > 0 && (
                                                         <div className="flex flex-wrap gap-2">
                                                             {message.attachments.map((attachment, i) => (
                                                                 <div key={i} className="relative">
@@ -677,6 +1065,11 @@ const AIChatBot: React.FC<AIChatBotProps> = ({ apiKey, database }) => {
                                                 </>
                                             ) : (
                                                 <div className={`prose ${message.sender === 'user' ? 'prose-invert' : ''} max-w-none`}>
+                                                    {message.queryType && (
+                                                        <div className="text-xs text-gray-500 mb-1">
+                                                            Intent: {message.queryType.type}
+                                                        </div>
+                                                    )}
                                                     <ReactMarkdown
                                                         components={{
                                                             code: ({children, className}) => {
@@ -719,15 +1112,14 @@ const AIChatBot: React.FC<AIChatBotProps> = ({ apiKey, database }) => {
                                         </div>
                                     </div>
                                 ))}
-                                {isThinking && (
-                                    <div className="flex items-center space-x-2 p-3 bg-white rounded-[18px] rounded-bl-[4px] shadow-sm max-w-[85%]">
-                                        <div className="flex space-x-1">
-                                            <div className="w-2 h-2 bg-indigo-500 rounded-full animate-bounce" />
-                                            <div className="w-2 h-2 bg-indigo-500 rounded-full animate-bounce delay-100" />
-                                            <div className="w-2 h-2 bg-indigo-500 rounded-full animate-bounce delay-200" />
-                                        </div>
-                                        <span className="text-sm text-gray-500">AI is thinking...</span>
-                                    </div>
+                                {isAnalyzing && (
+                                    <IntentAnalysisLoader currentStage={analysisStage} />
+                                )}
+                                {isThinking && actions.length > 0 && (
+                                    <ThinkingProcess 
+                                        actions={actions}
+                                        currentActionIndex={currentActionIndex}
+                                    />
                                 )}
                                 {isRecording && (
                                     <div className="flex items-center space-x-2 p-3 bg-red-100 rounded-[18px] rounded-br-[4px] shadow-sm max-w-[85%] ml-auto">
@@ -876,4 +1268,4 @@ const AIChatBot: React.FC<AIChatBotProps> = ({ apiKey, database }) => {
     );
 };
 
-export default AIChatBot; 
+export default AIChatBot;

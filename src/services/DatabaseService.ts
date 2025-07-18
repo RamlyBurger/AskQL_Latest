@@ -185,7 +185,7 @@ export class DatabaseService {
                 ...(showTopN && { showTopN: showTopN.toString() })
             });
 
-            const response = await axios.get(`${API_URL}/table-data/${tableId}/data`, {
+            const response = await axios.get(`${API_URL}/tableData/${tableId}/data`, {
                 params: { page, pageSize, sortColumn, sortOrder, showTopN }
             });
             return response.data.data;
@@ -197,7 +197,7 @@ export class DatabaseService {
 
     static async insertTableData(tableId: number, data: Record<string, any>): Promise<TableData> {
         try {
-            const response = await axios.post(`${API_URL}/table-data/${tableId}/data`, { data: [data] });
+            const response = await axios.post(`${API_URL}/tableData/${tableId}/data`, { data: [data] });
             return response.data.data[0]; // Return the first (and only) inserted record
         } catch (error) {
             console.error('Error inserting table data:', error);
@@ -207,7 +207,7 @@ export class DatabaseService {
 
     static async updateTableRow(tableId: number, rowId: number, data: Record<string, any>): Promise<TableData> {
         try {
-            const response = await axios.put(`${API_URL}/table-data/${tableId}/data/${rowId}`, { row_data: data });
+            const response = await axios.put(`${API_URL}/tableData/${tableId}/data/${rowId}`, { row_data: data });
             return response.data.data;
         } catch (error) {
             console.error('Error updating table row:', error);
@@ -217,7 +217,7 @@ export class DatabaseService {
 
     static async deleteTableRow(tableId: number, rowId: number): Promise<void> {
         try {
-            await axios.delete(`${API_URL}/table-data/${tableId}/data/${rowId}`);
+            await axios.delete(`${API_URL}/tableData/${tableId}/data/${rowId}`);
         } catch (error) {
             console.error('Error deleting table row:', error);
             throw error;

@@ -6,7 +6,7 @@ import { TableData } from '../entities/TableData';
 import { parse as csvParse } from 'csv-parse';
 import { Readable } from 'stream';
 import { Repository } from 'typeorm';
-import GeminiController from './GeminiController';
+import { GeminiController } from './GeminiController';
 import { DataType, getDefaultValue } from '../types/dataTypes';
 
 export class CSVImportController {
@@ -168,7 +168,7 @@ export class CSVImportController {
                 } as unknown as Response;
 
                 GeminiController.detectColumnTypes({
-                    body: { columnNames, sampleData }
+                    body: { columnNames, sampleData, apiKey: process.env.GEMINI_API_KEY }
                 } as Request, mockRes);
             });
             

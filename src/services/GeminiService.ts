@@ -2,6 +2,16 @@ import axios from 'axios';
 
 export type MessageType = 'text' | 'image' | 'file' | 'voice' | 'combined';
 
+export interface QueryType {
+    type: string;
+    explanation: string;
+}
+
+export interface AIResponse {
+    response: string;
+    queryType?: QueryType;
+}
+
 class GeminiService {
     private apiKey: string;
     private baseUrl = 'http://localhost:3000/api';
@@ -15,7 +25,6 @@ class GeminiService {
             const reader = new FileReader();
             reader.onload = () => {
                 if (typeof reader.result === 'string') {
-                    // Remove the data URL prefix (e.g., "data:image/jpeg;base64,")
                     const base64 = reader.result.split(',')[1];
                     resolve(base64);
                 } else {
@@ -32,7 +41,7 @@ class GeminiService {
         database: any,
         messageType: MessageType = 'text',
         textContext?: string
-    ): Promise<string> {
+    ): Promise<AIResponse> {
         try {
             let payload: any = {
                 database,
@@ -59,7 +68,7 @@ class GeminiService {
                 };
 
                 const response = await axios.post(`${this.baseUrl}/gemini/process-images`, payload);
-                return response.data.response;
+                return response.data;
             } else if (content instanceof File) {
                 // Handle single file (voice/file)
                 const formData = new FormData();
@@ -77,6 +86,9 @@ class GeminiService {
                     case 'file':
                         endpoint = 'process-file';
                         break;
+                    case 'image':
+                        endpoint = 'process-image';
+                        break;
                 }
 
                 const response = await axios.post(`${this.baseUrl}/gemini/${endpoint}`, formData, {
@@ -85,7 +97,9 @@ class GeminiService {
                     },
                 });
 
-                return messageType === 'voice' ? response.data.transcription : response.data.content;
+                return {
+                    response: messageType === 'voice' ? response.data.transcription : response.data.content
+                };
             } else {
                 // Handle text message
                 payload = {
@@ -95,11 +109,11 @@ class GeminiService {
                 };
 
                 const response = await axios.post(`${this.baseUrl}/gemini/chat`, payload);
-                return response.data.response;
+                return response.data;
             }
         } catch (error) {
-            console.error('Error in GeminiService:', error);
-            throw new Error('Failed to process message with AI');
+            console.error('Error in sendMessage:', error);
+            throw error;
         }
     }
 }

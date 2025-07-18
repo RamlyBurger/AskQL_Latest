@@ -1,7 +1,7 @@
 import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, ManyToOne, JoinColumn, Unique } from "typeorm";
 import { Table } from "./Table";
 
-@Entity()
+@Entity('attributes')
 @Unique(['name', 'table_id'])
 export class Attribute {
     @PrimaryGeneratedColumn()

@@ -229,6 +229,7 @@ const TableDataView = ({ table, onError }: TableDataViewProps) => {
             const sortColumn = currentSort?.id;
             const sortOrder = currentSort?.desc ? 'desc' : 'asc';
             
+            // First, get the table data with column types
             const data = await DatabaseService.getTableData(
                 table.id,
                 pagination.pageIndex + 1,
@@ -237,6 +238,14 @@ const TableDataView = ({ table, onError }: TableDataViewProps) => {
                 sortOrder,
                 showTopN ? topNCount : undefined
             );
+
+            // Update the table's attributes with the column types from the response
+            if (data.columnTypes && table.attributes) {
+                table.attributes = table.attributes.map(attr => ({
+                    ...attr,
+                    data_type: data.columnTypes[attr.name] || attr.data_type
+                }));
+            }
             
             setTableData(data);
             setAllData(data.data);

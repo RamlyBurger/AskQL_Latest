@@ -1,7 +1,7 @@
 import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, ManyToOne, JoinColumn } from "typeorm";
 import { Table } from "./Table";
 
-@Entity()
+@Entity('table_data')
 export class TableData {
     @PrimaryGeneratedColumn()
     id: number;
@@ -13,7 +13,7 @@ export class TableData {
     @JoinColumn({ name: 'table_id', referencedColumnName: 'id' })
     table: Table;
 
-    @Column({ type: 'jsonb' })
+    @Column({ type: 'simple-json' })
     row_data: Record<string, any>;
 
     @CreateDateColumn()

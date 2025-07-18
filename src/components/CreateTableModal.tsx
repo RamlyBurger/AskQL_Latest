@@ -13,7 +13,7 @@ const DATA_TYPES = [
     { value: 'NUMERIC', label: 'Numeric' },
     { value: 'TIMESTAMP', label: 'Timestamp' },
     { value: 'BOOLEAN', label: 'Boolean' },
-    { value: 'VARCHAR', label: 'Text' }
+    { value: 'VARCHAR', label: 'Text (Varchar)' }
 ];
 
 const CreateTableModal = ({ isOpen, onClose, onCreate, isLoading }: CreateTableModalProps) => {
