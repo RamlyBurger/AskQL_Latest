@@ -8,15 +8,29 @@ import { useNavigate } from 'react-router-dom';
 import { DatabaseService } from '../services/DatabaseService';
 import ChatService from '../services/ChatService';
 import type { ChatMessage as DBChatMessage, ChatSession } from '../services/ChatService';
+import type { MessageType } from '../services/GeminiService';
 
 interface ChatMessage {
     sender: 'user' | 'bot';
     content: string;
     timestamp: Date;
     sql?: string;
-    type?: 'text' | 'image' | 'file' | 'voice';
+    type?: MessageType;
     fileUrl?: string;
     fileName?: string;
+    attachments?: Array<{
+        type: string;
+        url: string;
+        fileName: string;
+    }>;
+}
+
+interface Attachment {
+    id: string;
+    file: File;
+    type: 'image' | 'file' | 'voice';
+    previewUrl?: string;
+    duration?: number; // Add duration for voice messages
 }
 
 interface ChatHistory {
@@ -31,6 +45,8 @@ interface AIChatBotProps {
     database?: any;
 }
 
+const MAX_ATTACHMENTS = 5;
+
 const AIChatBot: React.FC<AIChatBotProps> = ({ apiKey, database }) => {
     const [isOpen, setIsOpen] = useState(false);
     const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -43,11 +59,25 @@ const AIChatBot: React.FC<AIChatBotProps> = ({ apiKey, database }) => {
     const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
     const [isRecording, setIsRecording] = useState(false);
     const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null);
+    const [pendingAttachments, setPendingAttachments] = useState<Attachment[]>([]);
     
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const geminiService = useRef<GeminiService>(new GeminiService(apiKey));
     const fileInputRef = useRef<HTMLInputElement>(null);
     const navigate = useNavigate();
+
+    // Add state for image modal
+    const [modalImage, setModalImage] = useState<string | null>(null);
+
+    // Function to open image modal
+    const openImageModal = (imageUrl: string) => {
+        setModalImage(imageUrl);
+    };
+
+    // Function to close image modal
+    const closeImageModal = () => {
+        setModalImage(null);
+    };
 
     // Load chat sessions from database on mount and when database changes
     useEffect(() => {
@@ -198,9 +228,7 @@ const AIChatBot: React.FC<AIChatBotProps> = ({ apiKey, database }) => {
     };
 
     const handleSend = async () => {
-        if (!inputMessage.trim()) return;
-        if (!apiKey) {
-            setError('API key is not configured. Please set GEMINI_API_KEY in your environment.');
+        if ((!inputMessage.trim() && pendingAttachments.length === 0) || !apiKey) {
             return;
         }
         if (!currentSessionId) {
@@ -208,51 +236,108 @@ const AIChatBot: React.FC<AIChatBotProps> = ({ apiKey, database }) => {
         }
 
         setError(null);
-        const userMessage: ChatMessage = {
-            sender: 'user',
-            content: inputMessage,
-            timestamp: new Date(),
-            type: 'text'
-        };
+        setIsThinking(true);
 
         try {
-            // Save user message to database
+            // First, upload all attachments
+            const uploadedAttachments = await Promise.all(
+                pendingAttachments.map(async (attachment) => {
+                    const { url } = await ChatService.uploadFile(attachment.file);
+                    return {
+                        ...attachment,
+                        url
+                    };
+                })
+            );
+
+            // Create a single message that combines text and attachments
+            const messageContent = {
+                text: inputMessage.trim(),
+                attachments: uploadedAttachments.map(attachment => ({
+                    type: attachment.type,
+                    url: attachment.url,
+                    fileName: attachment.file.name
+                }))
+            };
+
+            // Save the combined message
             await ChatService.addMessage({
                 session_id: currentSessionId!,
                 sender: 'user',
-                content: inputMessage,
-                message_type: 'text'
+                content: JSON.stringify(messageContent),
+                message_type: 'combined'
             });
 
-            setMessages(prev => [...prev, userMessage]);
-            setInputMessage('');
-            setIsThinking(true);
+            // Update UI with combined message
+            setMessages(prev => [...prev, {
+                sender: 'user',
+                content: messageContent.text,
+                timestamp: new Date(),
+                type: 'combined',
+                attachments: messageContent.attachments
+            }]);
 
-            const response = await geminiService.current.sendMessage(inputMessage, database);
-            const sql = extractSQLQuery(response);
+            // Process with AI based on content type
+            let aiResponse;
+            if (pendingAttachments.some(a => a.type === 'image')) {
+                // If there are images, send them together with any text
+                const imageFiles = pendingAttachments
+                    .filter(a => a.type === 'image')
+                    .map(a => a.file);
+                aiResponse = await geminiService.current.sendMessage(
+                    imageFiles,
+                    database,
+                    'image',
+                    inputMessage.trim() // Pass text as additional context
+                );
+            } else if (pendingAttachments.length > 0) {
+                // For other types of attachments
+                const firstAttachment = pendingAttachments[0];
+                aiResponse = await geminiService.current.sendMessage(
+                    firstAttachment.file,
+                    database,
+                    firstAttachment.type,
+                    inputMessage.trim()
+                );
+            } else {
+                // Text only
+                aiResponse = await geminiService.current.sendMessage(
+                    inputMessage.trim(),
+                    database,
+                    'text'
+                );
+            }
 
-            // Save bot message to database
+            // Save and display AI response
             await ChatService.addMessage({
                 session_id: currentSessionId!,
                 sender: 'bot',
-                content: response,
-                message_type: 'text',
-                sql_query: sql
+                content: aiResponse,
+                message_type: 'text'
             });
 
-            const botMessage: ChatMessage = {
+            setMessages(prev => [...prev, {
                 sender: 'bot',
-                content: response,
+                content: aiResponse,
                 timestamp: new Date(),
-                sql: sql,
                 type: 'text'
-            };
+            }]);
+
+            // Clear input and attachments
+            setInputMessage('');
             
-            setMessages(prev => [...prev, botMessage]);
+            // Clean up preview URLs before clearing attachments
+            pendingAttachments.forEach(attachment => {
+                if (attachment.previewUrl) {
+                    URL.revokeObjectURL(attachment.previewUrl);
+                }
+            });
+            setPendingAttachments([]);
+
         } catch (error) {
+            console.error('Error in chat communication:', error);
             const errorMessage = error instanceof Error ? error.message : 'An error occurred while processing your message';
             setError(errorMessage);
-            console.error('Error in chat communication:', error);
         } finally {
             setIsThinking(false);
         }
@@ -265,87 +350,101 @@ const AIChatBot: React.FC<AIChatBotProps> = ({ apiKey, database }) => {
 
     // Handle file uploads
     const handleFileUpload = async (type: 'file' | 'image') => {
+        if (pendingAttachments.length >= MAX_ATTACHMENTS) {
+            setError(`Maximum ${MAX_ATTACHMENTS} attachments allowed at a time.`);
+            return;
+        }
+
         if (fileInputRef.current) {
             fileInputRef.current.accept = type === 'image' ? 'image/*' : '*/*';
+            fileInputRef.current.multiple = type === 'image'; // Allow multiple files only for images
             fileInputRef.current.click();
         }
     };
 
     const processFile = async (file: File) => {
-        if (!currentSessionId) {
-            await createNewChat();
+        if (pendingAttachments.length >= MAX_ATTACHMENTS) {
+            setError(`Maximum ${MAX_ATTACHMENTS} attachments allowed at a time.`);
+            return;
+        }
+
+        // Add file size limit (10MB)
+        const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+        if (file.size > MAX_FILE_SIZE) {
+            setError(`File size exceeds 10MB limit. Please choose a smaller file.`);
+            return;
         }
 
         const isImage = file.type.startsWith('image/');
-        try {
-            const { url } = await ChatService.uploadFile(file);
-            
-            await ChatService.addMessage({
-                session_id: currentSessionId!,
-                sender: 'user',
-                content: file.name,
-                message_type: isImage ? 'image' : 'file',
-                file_url: url,
-                file_name: file.name
-            });
+        const attachmentId = Math.random().toString(36).substring(7);
 
-            const newMessage: ChatMessage = {
-                sender: 'user',
-                content: file.name,
-                timestamp: new Date(),
-                type: isImage ? 'image' : 'file',
-                fileUrl: url,
-                fileName: file.name
-            };
-            
-            setMessages(prev => [...prev, newMessage]);
-        } catch (error) {
-            console.error('Error processing file:', error);
-            setError('Failed to upload file');
+        // Create preview URL for images
+        let previewUrl: string | undefined;
+        if (isImage) {
+            previewUrl = URL.createObjectURL(file);
         }
+
+        // Add to pending attachments
+        setPendingAttachments(prev => [...prev, {
+            id: attachmentId,
+            file,
+            type: isImage ? 'image' : 'file',
+            previewUrl
+        }]);
     };
 
-    // Handle voice recording
+    const removeAttachment = (attachmentId: string) => {
+        setPendingAttachments(prev => {
+            const attachment = prev.find(a => a.id === attachmentId);
+            if (attachment?.previewUrl) {
+                URL.revokeObjectURL(attachment.previewUrl);
+            }
+            return prev.filter(a => a.id !== attachmentId);
+        });
+    };
+
+    // Enhance voice recording error handling
     const startRecording = async () => {
+        if (pendingAttachments.length >= MAX_ATTACHMENTS) {
+            setError(`Maximum ${MAX_ATTACHMENTS} attachments allowed at a time.`);
+            return;
+        }
+
         if (!currentSessionId) {
             await createNewChat();
         }
+
+        setError(null);
 
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
             const recorder = new MediaRecorder(stream);
             const chunks: BlobPart[] = [];
+            let startTime = Date.now();
 
             recorder.ondataavailable = (e) => chunks.push(e.data);
             recorder.onstop = async () => {
                 const blob = new Blob(chunks, { type: 'audio/webm' });
-                const file = new File([blob], 'voice-message.webm', { type: 'audio/webm' });
                 
-                try {
-                    const { url } = await ChatService.uploadFile(file);
-                    
-                    await ChatService.addMessage({
-                        session_id: currentSessionId!,
-                        sender: 'user',
-                        content: 'Voice message',
-                        message_type: 'voice',
-                        file_url: url,
-                        file_name: 'voice-message.webm'
-                    });
-
-                    const newMessage: ChatMessage = {
-                        sender: 'user',
-                        content: 'Voice message',
-                        timestamp: new Date(),
-                        type: 'voice',
-                        fileUrl: url
-                    };
-                    
-                    setMessages(prev => [...prev, newMessage]);
-                } catch (error) {
-                    console.error('Error uploading voice message:', error);
-                    setError('Failed to upload voice message');
+                // Add size check for voice recording
+                if (blob.size > 10 * 1024 * 1024) {
+                    setError('Voice recording exceeds 10MB limit. Please record a shorter message.');
+                    return;
                 }
+
+                const file = new File([blob], 'voice-message.webm', { type: 'audio/webm' });
+                const attachmentId = Math.random().toString(36).substring(7);
+                const previewUrl = URL.createObjectURL(blob);
+                const duration = (Date.now() - startTime) / 1000; // Duration in seconds
+                
+                // Add to pending attachments
+                setPendingAttachments(prev => [...prev, {
+                    id: attachmentId,
+                    file,
+                    type: 'voice',
+                    previewUrl,
+                    duration
+                }]);
             };
 
             recorder.start();
@@ -354,7 +453,8 @@ const AIChatBot: React.FC<AIChatBotProps> = ({ apiKey, database }) => {
             setIsAttachmentMenuOpen(false);
         } catch (error) {
             console.error('Error accessing microphone:', error);
-            setError('Could not access microphone. Please check permissions.');
+            setError('Could not access microphone. Please check browser permissions and try again.');
+            setIsRecording(false);
         }
     };
 
@@ -399,14 +499,43 @@ const AIChatBot: React.FC<AIChatBotProps> = ({ apiKey, database }) => {
 
     return (
         <>
+            {/* Image Modal */}
+            {modalImage && (
+                <div 
+                    className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-[1001]"
+                    onClick={closeImageModal}
+                >
+                    <div className="relative max-w-[90%] max-h-[90%]">
+                        <img 
+                            src={modalImage} 
+                            alt="Enlarged view"
+                            className="max-w-full max-h-[90vh] object-contain"
+                        />
+                        <button
+                            onClick={closeImageModal}
+                            className="absolute -top-4 -right-4 bg-white text-black rounded-full p-2 hover:bg-gray-200"
+                        >
+                            <FaTimes />
+                        </button>
+                    </div>
+                </div>
+            )}
+
             <input
                 type="file"
                 ref={fileInputRef}
                 style={{ display: 'none' }}
+                multiple
                 onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (file) {
-                        processFile(file);
+                    const files = Array.from(e.target.files || []);
+                    const remainingSlots = MAX_ATTACHMENTS - pendingAttachments.length;
+                    
+                    if (files.length > remainingSlots) {
+                        setError(`Can only add ${remainingSlots} more attachment${remainingSlots !== 1 ? 's' : ''}. Maximum ${MAX_ATTACHMENTS} attachments allowed.`);
+                        // Only process the first N files that fit within the limit
+                        files.slice(0, remainingSlots).forEach(file => processFile(file));
+                    } else {
+                        files.forEach(file => processFile(file));
                     }
                 }}
             />
@@ -507,64 +636,83 @@ const AIChatBot: React.FC<AIChatBotProps> = ({ apiKey, database }) => {
                                                 ? 'bg-indigo-600 text-white rounded-br-[4px]'
                                                 : 'bg-white text-gray-800 rounded-bl-[4px] shadow-sm'
                                         }`}>
-                                            {message.type === 'image' && message.fileUrl && (
-                                                <img 
-                                                    src={message.fileUrl} 
-                                                    alt={message.fileName || 'Uploaded image'} 
-                                                    className="max-w-full rounded-lg mb-2"
-                                                />
-                                            )}
-                                            {message.type === 'voice' && message.fileUrl && (
-                                                <audio controls src={message.fileUrl} className="max-w-full mb-2" />
-                                            )}
-                                            {message.type === 'file' && message.fileUrl && (
-                                                <div className="flex items-center space-x-2 mb-2">
-                                                    <FaPaperclip />
-                                                    <a 
-                                                        href={message.fileUrl} 
-                                                        download={message.fileName}
-                                                        className="underline"
+                                            {message.type === 'combined' ? (
+                                                <>
+                                                    {message.content && (
+                                                        <div className="mb-2">{message.content}</div>
+                                                    )}
+                                                    {message.attachments && (
+                                                        <div className="flex flex-wrap gap-2">
+                                                            {message.attachments.map((attachment, i) => (
+                                                                <div key={i} className="relative">
+                                                                    {attachment.type === 'image' ? (
+                                                                        <img 
+                                                                            src={attachment.url} 
+                                                                            alt={attachment.fileName}
+                                                                            className="max-w-[200px] rounded-lg cursor-pointer"
+                                                                            onClick={() => openImageModal(attachment.url)}
+                                                                        />
+                                                                    ) : attachment.type === 'voice' ? (
+                                                                        <audio 
+                                                                            src={attachment.url} 
+                                                                            controls 
+                                                                            className="max-w-full mb-2"
+                                                                        />
+                                                                    ) : (
+                                                                        <div className="flex items-center space-x-2 mb-2">
+                                                                            <FaPaperclip />
+                                                                            <a 
+                                                                                href={attachment.url}
+                                                                                download={attachment.fileName}
+                                                                                className="underline"
+                                                                            >
+                                                                                {attachment.fileName}
+                                                                            </a>
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    )}
+                                                </>
+                                            ) : (
+                                                <div className={`prose ${message.sender === 'user' ? 'prose-invert' : ''} max-w-none`}>
+                                                    <ReactMarkdown
+                                                        components={{
+                                                            code: ({children, className}) => {
+                                                                if (className === 'language-sql' || message.sql) {
+                                                                    return (
+                                                                        <div className="relative">
+                                                                            <pre className={markdownStyles.pre}>
+                                                                                <code className={className}>
+                                                                                    {children}
+                                                                                </code>
+                                                                                <button
+                                                                                    onClick={() => handleExecuteQuery(message.sql || String(children))}
+                                                                                    className="absolute top-2 right-2 bg-green-500 hover:bg-green-600 text-white p-2 rounded"
+                                                                                    title="Run Query"
+                                                                                >
+                                                                                    Run Query
+                                                                                </button>
+                                                                            </pre>
+                                                                        </div>
+                                                                    );
+                                                                }
+                                                                return (
+                                                                    <code className={markdownStyles.code}>
+                                                                        {children}
+                                                                    </code>
+                                                                );
+                                                            },
+                                                            pre: ({children}) => (
+                                                                <pre className={markdownStyles.pre}>{children}</pre>
+                                                            ),
+                                                        }}
                                                     >
-                                                        {message.fileName}
-                                                    </a>
+                                                        {message.content}
+                                                    </ReactMarkdown>
                                                 </div>
                                             )}
-                                            <div className={`prose ${message.sender === 'user' ? 'prose-invert' : ''} max-w-none`}>
-                                                <ReactMarkdown
-                                                    components={{
-                                                        code: ({children, className}) => {
-                                                            if (className === 'language-sql' || message.sql) {
-                                                                return (
-                                                                    <div className="relative">
-                                                                        <pre className={markdownStyles.pre}>
-                                                                            <code className={className}>
-                                                                                {children}
-                                                                            </code>
-                                                                            <button
-                                                                                onClick={() => handleExecuteQuery(message.sql || String(children))}
-                                                                                className="absolute top-2 right-2 bg-green-500 hover:bg-green-600 text-white p-2 rounded"
-                                                                                title="Run Query"
-                                                                            >
-                                                                                Run Query
-                                                                            </button>
-                                                                        </pre>
-                                                                    </div>
-                                                                );
-                                                            }
-                                                            return (
-                                                                <code className={markdownStyles.code}>
-                                                                    {children}
-                                                                </code>
-                                                            );
-                                                        },
-                                                        pre: ({children}) => (
-                                                            <pre className={markdownStyles.pre}>{children}</pre>
-                                                        ),
-                                                    }}
-                                                >
-                                                    {message.content}
-                                                </ReactMarkdown>
-                                            </div>
                                             <p className="text-xs mt-1 opacity-70">
                                                 {message.timestamp.toLocaleTimeString()}
                                             </p>
@@ -589,6 +737,73 @@ const AIChatBot: React.FC<AIChatBotProps> = ({ apiKey, database }) => {
                                 )}
                                 <div ref={messagesEndRef} />
                             </div>
+
+                            {/* Pending Attachments */}
+                            {pendingAttachments.length > 0 && (
+                                <div className="border-t border-gray-200 p-2 bg-gray-50">
+                                    <div className="flex items-center justify-between mb-2 px-1">
+                                        <span className="text-sm text-gray-600">
+                                            Attachments ({pendingAttachments.length}/{MAX_ATTACHMENTS})
+                                        </span>
+                                        {pendingAttachments.length > 0 && (
+                                            <button
+                                                onClick={() => {
+                                                    // Clean up all preview URLs
+                                                    pendingAttachments.forEach(attachment => {
+                                                        if (attachment.previewUrl) {
+                                                            URL.revokeObjectURL(attachment.previewUrl);
+                                                        }
+                                                    });
+                                                    setPendingAttachments([]);
+                                                }}
+                                                className="text-xs text-red-500 hover:text-red-700"
+                                            >
+                                                Clear all
+                                            </button>
+                                        )}
+                                    </div>
+                                    <div className="flex flex-wrap gap-2">
+                                        {pendingAttachments.map(attachment => (
+                                            <div key={attachment.id} className="relative group">
+                                                {attachment.type === 'image' && attachment.previewUrl ? (
+                                                    <img 
+                                                        src={attachment.previewUrl} 
+                                                        alt={attachment.file.name}
+                                                        className="w-16 h-16 object-cover rounded"
+                                                    />
+                                                ) : attachment.type === 'voice' && attachment.previewUrl ? (
+                                                    <div className="w-48 bg-white rounded-lg p-2 shadow-sm">
+                                                        <div className="flex items-center gap-2 mb-1">
+                                                            <FaMicrophone className="text-indigo-600" />
+                                                            <span className="text-xs text-gray-600">
+                                                                {attachment.duration ? `${Math.round(attachment.duration)}s` : 'Voice Message'}
+                                                            </span>
+                                                        </div>
+                                                        <audio 
+                                                            src={attachment.previewUrl} 
+                                                            controls 
+                                                            className="w-full h-8"
+                                                            controlsList="nodownload"
+                                                        />
+                                                    </div>
+                                                ) : (
+                                                    <div className="w-16 h-16 bg-gray-200 rounded flex items-center justify-center">
+                                                        <span className="text-xs text-gray-600">
+                                                            {attachment.type === 'file' ? 'File' : 'Unknown'}
+                                                        </span>
+                                                    </div>
+                                                )}
+                                                <button
+                                                    onClick={() => removeAttachment(attachment.id)}
+                                                    className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                                                >
+                                                    <FaTimes size={12} />
+                                                </button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
 
                             {/* Input Area */}
                             <div className="border-t border-gray-200 p-4 bg-white">
@@ -625,7 +840,7 @@ const AIChatBot: React.FC<AIChatBotProps> = ({ apiKey, database }) => {
                                                     className="w-full px-4 py-2 text-left hover:bg-gray-50 flex items-center space-x-2"
                                                 >
                                                     <FaImage />
-                                                    <span>Image</span>
+                                                    <span>Images</span>
                                                 </button>
                                             </div>
                                         )}
@@ -646,7 +861,7 @@ const AIChatBot: React.FC<AIChatBotProps> = ({ apiKey, database }) => {
                                     />
                                     <button
                                         onClick={handleSend}
-                                        disabled={(!inputMessage.trim() || !apiKey) && !isRecording}
+                                        disabled={(!inputMessage.trim() && pendingAttachments.length === 0) || !apiKey}
                                         className="w-10 h-10 bg-indigo-600 text-white rounded-full flex items-center justify-center disabled:opacity-50 hover:bg-indigo-700 transition-colors"
                                     >
                                         <FaPaperPlane className="text-sm" />

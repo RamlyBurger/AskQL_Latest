@@ -1,12 +1,68 @@
 import { Request, Response } from 'express';
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import { fileTypeFromBuffer } from 'file-type';
+import * as fs from 'fs';
+import * as path from 'path';
+import { Readable } from 'stream';
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
-
-export class GeminiController {
-    static async detectColumnTypes(req: Request, res: Response) {
+class GeminiController {
+    private static async processContent(genAI: GoogleGenerativeAI, content: string | Buffer | { data: string, mimeType: string }[], contentType: string, prompt: string): Promise<string> {
         try {
-            const { columnNames, sampleData } = req.body;
+            const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+            
+            if (Array.isArray(content)) {
+                // For multiple images
+                const imagePrompts = content.map(img => ({
+                    inlineData: {
+                        data: img.data,
+                        mimeType: img.mimeType
+                    }
+                }));
+                
+                // Create parts array with text prompt first, followed by images
+                const parts = [
+                    { text: prompt },
+                    ...imagePrompts
+                ];
+
+                const result = await model.generateContent(parts);
+                const response = await result.response;
+                return response.text();
+            } else if (content instanceof Buffer) {
+                // For binary content (audio)
+                const base64Content = content.toString('base64');
+                const mimeType = (await fileTypeFromBuffer(content))?.mime || 'application/octet-stream';
+                
+                const fullPrompt = `${prompt}\n\nContent Type: ${contentType}\nMIME Type: ${mimeType}\nBase64 Content: ${base64Content}`;
+                const result = await model.generateContent(fullPrompt);
+                const response = await result.response;
+                return response.text();
+            } else {
+                // For text content
+                const fullPrompt = `${prompt}\n\nContent: ${content}`;
+                const result = await model.generateContent(fullPrompt);
+                const response = await result.response;
+                return response.text();
+            }
+        } catch (error) {
+            console.error('Error processing content with Gemini:', error);
+            throw new Error(`Failed to process ${contentType} content`);
+        }
+    }
+
+    private static async extractTextFromFile(filePath: string): Promise<string> {
+        try {
+            const content = await fs.promises.readFile(filePath, 'utf-8');
+            return content;
+        } catch (error) {
+            console.error('Error extracting text from file:', error);
+            throw new Error('Failed to extract text from file');
+        }
+    }
+
+    async detectColumnTypes(req: Request, res: Response) {
+        try {
+            const { columnNames, sampleData, apiKey } = req.body;
 
             if (!columnNames || !sampleData || !Array.isArray(columnNames)) {
                 return res.status(400).json({
@@ -15,6 +71,11 @@ export class GeminiController {
                 });
             }
 
+            if (!apiKey) {
+                return res.status(400).json({ error: 'API key is required' });
+            }
+
+            const genAI = new GoogleGenerativeAI(apiKey);
             const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
 
             // Prepare the prompt
@@ -58,7 +119,7 @@ Respond in the following JSON format:
 }`;
 
             const result = await model.generateContent(prompt);
-            const response = result.response;
+            const response = await result.response;
             const text = response.text();
 
             // Parse the JSON response
@@ -88,4 +149,140 @@ Respond in the following JSON format:
             });
         }
     }
-} 
+
+    async chat(req: Request, res: Response) {
+        try {
+            const { message, messageType, additionalContext, apiKey } = req.body;
+
+            if (!apiKey) {
+                return res.status(400).json({ error: 'API key is required' });
+            }
+
+            const genAI = new GoogleGenerativeAI(apiKey);
+            const prompt = additionalContext ? `${additionalContext}\n\nUser Message: ${message}` : message;
+            const response = await GeminiController.processContent(genAI, message, 'text', prompt);
+            res.json({ response });
+        } catch (error) {
+            console.error('Error in chat:', error);
+            res.status(500).json({ error: 'Failed to process chat message' });
+        }
+    }
+
+    async processImage(req: Request, res: Response) {
+        try {
+            if (!req.file) {
+                return res.status(400).json({ error: 'No image file provided' });
+            }
+
+            const { apiKey } = req.body;
+            if (!apiKey) {
+                return res.status(400).json({ error: 'API key is required' });
+            }
+
+            const genAI = new GoogleGenerativeAI(apiKey);
+            const imageBuffer = await fs.promises.readFile(req.file.path);
+            
+            const prompt = "Please analyze this image and describe what you see in detail. Include any relevant information such as text, objects, people, or other notable elements.";
+            
+            const description = await GeminiController.processContent(genAI, imageBuffer, 'image', prompt);
+            
+            // Clean up the temporary file
+            await fs.promises.unlink(req.file.path);
+
+            res.json({ description });
+        } catch (error) {
+            console.error('Error processing image:', error);
+            res.status(500).json({ error: 'Failed to process image' });
+        }
+    }
+
+    async processImages(req: Request, res: Response) {
+        try {
+            const { images, message, apiKey } = req.body;
+
+            if (!images || !Array.isArray(images)) {
+                return res.status(400).json({ error: 'No images provided or invalid format' });
+            }
+
+            if (!apiKey) {
+                return res.status(400).json({ error: 'API key is required' });
+            }
+
+            const genAI = new GoogleGenerativeAI(apiKey);
+            
+            const prompt = message || "Please analyze these images and describe what you see in detail.";
+            
+            const response = await GeminiController.processContent(
+                genAI,
+                images,
+                'image',
+                prompt
+            );
+
+            res.json({ response });
+        } catch (error) {
+            console.error('Error processing images:', error);
+            res.status(500).json({ error: 'Failed to process images' });
+        }
+    }
+
+    async processFile(req: Request, res: Response) {
+        try {
+            if (!req.file) {
+                return res.status(400).json({ error: 'No file provided' });
+            }
+
+            const { apiKey } = req.body;
+            if (!apiKey) {
+                return res.status(400).json({ error: 'API key is required' });
+            }
+
+            const genAI = new GoogleGenerativeAI(apiKey);
+            
+            // Extract text from the file
+            const fileContent = await GeminiController.extractTextFromFile(req.file.path);
+            
+            const prompt = "Please analyze this file content and provide a meaningful response. Consider the context and type of content provided.";
+            
+            const content = await GeminiController.processContent(genAI, fileContent, 'file', prompt);
+            
+            // Clean up the temporary file
+            await fs.promises.unlink(req.file.path);
+
+            res.json({ content });
+        } catch (error) {
+            console.error('Error processing file:', error);
+            res.status(500).json({ error: 'Failed to process file' });
+        }
+    }
+
+    async transcribeVoice(req: Request, res: Response) {
+        try {
+            if (!req.file) {
+                return res.status(400).json({ error: 'No audio file provided' });
+            }
+
+            const { apiKey } = req.body;
+            if (!apiKey) {
+                return res.status(400).json({ error: 'API key is required' });
+            }
+
+            const genAI = new GoogleGenerativeAI(apiKey);
+            const audioBuffer = await fs.promises.readFile(req.file.path);
+            
+            const prompt = "Please transcribe and analyze this audio content. Provide both the transcription and any relevant context or insights from the audio.";
+            
+            const result = await GeminiController.processContent(genAI, audioBuffer, 'audio', prompt);
+
+            // Clean up the temporary file
+            await fs.promises.unlink(req.file.path);
+
+            res.json({ transcription: result });
+        } catch (error) {
+            console.error('Error transcribing voice:', error);
+            res.status(500).json({ error: 'Failed to transcribe voice message' });
+        }
+    }
+}
+
+export default new GeminiController(); 
