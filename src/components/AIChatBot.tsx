@@ -49,10 +49,14 @@ const AIChatBot: React.FC<AIChatBotProps> = ({ apiKey, database }) => {
     const fileInputRef = useRef<HTMLInputElement>(null);
     const navigate = useNavigate();
 
-    // Load chat sessions from database on mount
+    // Load chat sessions from database on mount and when database changes
     useEffect(() => {
         if (database?.id) {
             loadChatSessions();
+        } else {
+            setChatSessions([]);
+            setCurrentSessionId(null);
+            setMessages([]);
         }
     }, [database?.id]);
 
@@ -60,8 +64,14 @@ const AIChatBot: React.FC<AIChatBotProps> = ({ apiKey, database }) => {
     const loadChatSessions = async () => {
         try {
             if (!database?.id) return;
+            setError(null);
             const sessions = await ChatService.getSessions(database.id);
             setChatSessions(sessions);
+
+            // If we have sessions but no current session, load the most recent one
+            if (sessions.length > 0 && !currentSessionId) {
+                await loadChatSession(sessions[0].id);
+            }
         } catch (error) {
             console.error('Error loading chat sessions:', error);
             setError('Failed to load chat history');
@@ -72,13 +82,15 @@ const AIChatBot: React.FC<AIChatBotProps> = ({ apiKey, database }) => {
     const createNewChat = async () => {
         try {
             if (!database?.id) return;
+            setError(null);
             const newSession = await ChatService.createSession(
                 database.id,
-                `Chat ${chatSessions.length + 1}`
+                `Chat ${new Date().toLocaleString()}`
             );
-            setChatSessions(prev => [...prev, newSession]);
+            setChatSessions(prev => [newSession, ...prev]);
             setCurrentSessionId(newSession.id);
             setMessages([]);
+            setIsHistoryExpanded(false);
         } catch (error) {
             console.error('Error creating new chat:', error);
             setError('Failed to create new chat');
@@ -88,6 +100,7 @@ const AIChatBot: React.FC<AIChatBotProps> = ({ apiKey, database }) => {
     // Load a chat session from history
     const loadChatSession = async (sessionId: string) => {
         try {
+            setError(null);
             const sessionMessages = await ChatService.getSessionMessages(sessionId);
             const formattedMessages: ChatMessage[] = sessionMessages.map(msg => ({
                 sender: msg.sender,
