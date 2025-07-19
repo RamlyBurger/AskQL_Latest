@@ -131,7 +131,6 @@ WORKFLOW:
    - WAIT for the result in LAST ACTION AND RESULT
    - THEN use Action "Respond" with the SQL query formatted in markdown
    - NEVER use ExecuteSQL action for user's SQL requests
-   - ALWAYS include LIMIT 3 in SELECT queries
    - Use exact table and column names from GetTablesList result
 
 GUIDELINES:
@@ -170,7 +169,7 @@ EXAMPLE FLOWS:
 
 2. User asks: "Give me SQL to show cars with horsepower > 150"
    Step 1: {"Action": "GetTablesList"}
-   Step 2: {"Action": "Respond", "Result": "Here's the SQL query to find cars with horsepower > 150:\n\`\`\`sql\nSELECT * FROM Car WHERE horsepower > 150 LIMIT 3;\n\`\`\`"}
+   Step 2: {"Action": "Respond", "Result": "Here's the SQL query to find cars with horsepower > 150:\n\`\`\`sql\nSELECT * FROM Car WHERE horsepower > 150;\n\`\`\`"}
 
 RECENT CONVERSATION:
 ${conversationHistory.length > 0 ? conversationHistory.join('\n') : 'No conversation history.'}
@@ -270,12 +269,12 @@ Remember: ALWAYS use GetTablesList first for ANY database-related questions!`;
                         const sql = action.SQL.toLowerCase();
                         if (sql.includes('select')) {
                             if (!sql.includes('limit')) {
-                                action.SQL = `${action.SQL} limit 3`;
+                                action.SQL = `${action.SQL} `;
                                 console.log('Added missing LIMIT clause');
                             } else {
                                 const limitMatch = sql.match(/limit\s+(\d+)/i);
                                 if (limitMatch && parseInt(limitMatch[1]) > 10) {
-                                    action.SQL = action.SQL.replace(/limit\s+\d+/i, 'limit 3');
+                                    action.SQL = action.SQL.replace(/limit\s+\d+/i, '');
                                     console.log('Adjusted LIMIT to maximum allowed (10)');
                                 }
                             }
@@ -302,18 +301,26 @@ Remember: ALWAYS use GetTablesList first for ANY database-related questions!`;
                             }
 
                             try {
-                                // Get schema for all tables
-                                actionResult = database.tables.map((table: any) => ({
-                                    id: table.id,
-                                    name: table.name,
-                                    description: table.description,
-                                    columns: table.attributes?.map((attr: Attribute) => ({
-                                        name: attr.name,
-                                        type: attr.data_type,
-                                        is_nullable: attr.is_nullable || false,
-                                        is_primary_key: attr.is_primary_key || false,
-                                        is_foreign_key: attr.is_foreign_key || false
-                                    })) || []
+                                // Get schema for all tables with their data
+                                actionResult = await Promise.all(database.tables.map(async (table: any) => {
+                                    // Fetch table data to get column types
+                                    const tableData = await DatabaseService.getTableData(table.id, 1, 1);
+                                    
+                                    // Create columns array from the column types
+                                    const columns = Object.entries(tableData.columnTypes).map(([name, type]) => ({
+                                        name,
+                                        type,
+                                        is_nullable: table.attributes?.find((attr: Attribute) => attr.name === name)?.is_nullable || false,
+                                        is_primary_key: table.attributes?.find((attr: Attribute) => attr.name === name)?.is_primary_key || false,
+                                        is_foreign_key: table.attributes?.find((attr: Attribute) => attr.name === name)?.is_foreign_key || false
+                                    }));
+
+                                    return {
+                                        id: table.id,
+                                        name: table.name,
+                                        description: table.description,
+                                        columns
+                                    };
                                 }));
                             } catch (error) {
                                 console.error('Error fetching tables list:', error);
