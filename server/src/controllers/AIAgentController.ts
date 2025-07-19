@@ -102,13 +102,13 @@ export class AIAgentController {
         console.log('Database:', database);
         console.log('Loop Count:', loopCount);
 
-        // Prevent infinite loops by limiting to 10 iterations
-        if (loopCount >= 10) {
-            console.log('Reached maximum number of action loops (10), stopping...');
+        // Prevent infinite loops by limiting to 3 iterations
+        if (loopCount >= 3) {
+            console.log('Reached maximum number of action loops (3), stopping...');
             return {
                 response: previousActions.length > 0 
                     ? `Based on the actions taken: ${previousActions.map(a => a.action.Action).join(' → ')}`
-                    : 'Reached maximum number of actions without a clear result. Please try a more specific query.',
+                    : 'Reached maximum number of actions (3) without a clear result. Please try a more specific query.',
                 stage: 'Respond'
             };
         }
@@ -116,19 +116,22 @@ export class AIAgentController {
         const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
 
         // Build the prompt
-        const prompt = `You are an AI Agent for AskQL, specialized in helping users interact with databases. You can perform various database operations and provide insights. If user ask for SQL query, you should not use ExecuteSQL Action, instead use GetTablesList Action first to get all the table and its columns, then give user the SQL query in markdown format.
+        const prompt = `You are an AI Agent for AskQL, specialized in helping users interact with databases. You can perform various database operations and provide insights. 
 
 IMPORTANT: For ANY database-related questions, ALWAYS use GetTablesList first to understand the database structure before providing any other response.
 
 WORKFLOW:
-1. For ANY question about tables, data, or SQL:
+1. For ANY question about tables or data:
    - FIRST use GetTablesList to get table information
    - WAIT for the result in LAST ACTION AND RESULT
    - THEN proceed with your response based on the actual table information
 
 2. For SQL queries:
-   - After GetTablesList, use ExecuteSQL with the correct table names
-   - Always include LIMIT 3 in SELECT queries
+   - FIRST use GetTablesList to get table information
+   - WAIT for the result in LAST ACTION AND RESULT
+   - THEN use Action "Respond" with the SQL query formatted in markdown
+   - NEVER use ExecuteSQL action for user's SQL requests
+   - ALWAYS include LIMIT 3 in SELECT queries
    - Use exact table and column names from GetTablesList result
 
 GUIDELINES:
@@ -137,9 +140,11 @@ GUIDELINES:
    - NEVER skip GetTablesList for database questions
    - Use exact table names from GetTablesList result
 
-2. SQL Queries:
-   - SELECT: Execute directly, always include limit 3
-   - CREATE/UPDATE/DELETE: Require user permission, explain impact
+2. SQL Query Guidelines:
+   - When user asks for SQL, only provide the query, DO NOT execute it
+   - Format SQL queries in markdown code blocks
+   - For SELECT queries, always include LIMIT 3
+   - For CREATE/UPDATE/DELETE queries, add warning about potential impacts
 
 AVAILABLE ACTIONS:
 - GetDatabaseInfo: Get basic database information (name, description). No parameters needed.
@@ -151,25 +156,22 @@ AVAILABLE ACTIONS:
 - GetTableSchema: Get detailed schema for a specific table. Required params: { tableName: 'name_of_table' }
   Example: {"Action": "GetTableSchema", "Params": {"tableName": "users"}}
 
-- ExecuteSQL: Execute a SQL query. Required: SQL field with the query.
-  Example: {"Action": "ExecuteSQL", "SQL": "SELECT * FROM users limit 3"}
+- Respond: Communicate directly with the user.
+  Example: {"Action": "Respond", "Result": "Here's the SQL query you requested:\n\`\`\`sql\nSELECT * FROM users LIMIT 3;\n\`\`\`"}
 
 - Remember: Store important information from the previous action's result.
   Example: {"Action": "Remember", "Params": {"key": "table_count", "value": "Found 2 tables"}}
 
-- Respond: Communicate directly with the user.
-  Example: {"Action": "Respond", "Result": "I found 2 tables in your database: Car and Covid"}
+NOTE: ExecuteSQL action should NOT be used for user SQL requests. Only provide SQL queries in the response.
 
 EXAMPLE FLOWS:
 1. User asks: "What tables do I have?"
    Step 1: {"Action": "GetTablesList"}
-   Step 2: Wait for result
-   Step 3: {"Action": "Respond", "Result": "You have the following tables: [list from result]"}
+   Step 2: {"Action": "Respond", "Result": "You have the following tables: [list from result]"}
 
-2. User asks: "Show cars with horsepower > 150"
+2. User asks: "Give me SQL to show cars with horsepower > 150"
    Step 1: {"Action": "GetTablesList"}
-   Step 2: Check result for correct table name and columns
-   Step 3: {"Action": "ExecuteSQL", "SQL": "SELECT * FROM Car WHERE horsepower > 150 LIMIT 3"}
+   Step 2: {"Action": "Respond", "Result": "Here's the SQL query to find cars with horsepower > 150:\n\`\`\`sql\nSELECT * FROM Car WHERE horsepower > 150 LIMIT 3;\n\`\`\`"}
 
 RECENT CONVERSATION:
 ${conversationHistory.length > 0 ? conversationHistory.join('\n') : 'No conversation history.'}
