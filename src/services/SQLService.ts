@@ -47,9 +47,17 @@ class SQLService {
             await this.init();
         }
 
+        // Remove existing database if it exists
         if (this.databases.has(databaseId)) {
-            return this.databases.get(databaseId)!;
+            console.log(`Removing existing database ${databaseId}`);
+            this.databases.delete(databaseId);
         }
+
+        console.log('Creating new SQLite database with tables:', tables.map(t => ({
+            name: t.name,
+            attributeCount: t.attributes?.length || 0,
+            dataRowCount: t.data?.length || 0
+        })));
 
         const db = new this.SQL.Database();
 
@@ -73,6 +81,7 @@ class SQLService {
                         case 'float':
                         case 'double':
                         case 'decimal':
+                        case 'numeric':
                             sqlType = 'REAL';
                             break;
                         case 'boolean':
@@ -93,24 +102,39 @@ class SQLService {
                     const columnNames = table.attributes.map((attr: any) => this.escapeIdentifier(attr.name));
                     const placeholders = columnNames.map(() => '?').join(', ');
                     const insertSQL = `INSERT INTO ${this.escapeIdentifier(table.name)} (${columnNames.join(', ')}) VALUES (${placeholders})`;
-                    console.log('Inserting data with SQL:', insertSQL);
+                    console.log(`Inserting ${table.data.length} rows into table ${table.name}`);
+                    console.log('Insert SQL:', insertSQL);
 
                     const stmt = db.prepare(insertSQL);
                     table.data.forEach((row: any) => {
-                        // Extract values from row_data for each column
+                        // Extract values from row_data if it exists, otherwise use the row directly
+                        const rowData = row.row_data || row;
                         const values = table.attributes.map((attr: any) => {
-                            const value = row.row_data ? row.row_data[attr.name] : row[attr.name];
+                            const value = rowData[attr.name];
                             // Convert empty strings to null for non-TEXT columns
-                            if (value === '' && attr.data_type.toLowerCase() !== 'text') {
+                            if ((value === '' || value === undefined || value === null) && attr.data_type.toLowerCase() !== 'text') {
                                 return null;
                             }
                             return value;
                         });
-                        console.log('Inserting row values:', values);
-                        stmt.run(values);
+                        try {
+                            stmt.run(values);
+                        } catch (error) {
+                            console.error('Error inserting row:', { values, error });
+                            throw error;
+                        }
                     });
                     stmt.free();
                 }
+
+                // Verify table creation
+                const verifyResult = db.exec(`SELECT COUNT(*) as count FROM ${this.escapeIdentifier(table.name)}`);
+                console.log(`Verification - Table ${table.name} has ${verifyResult[0].values[0][0]} rows`);
+
+                // List all tables in the database
+                const tables = db.exec("SELECT name FROM sqlite_master WHERE type='table'");
+                console.log('Tables in database:', tables[0].values.map((v: string[]) => v[0]));
+
             } catch (error) {
                 console.error(`Error creating table ${table.name}:`, error);
                 throw error;
@@ -129,7 +153,21 @@ class SQLService {
 
         try {
             console.log('Executing SQL query:', sql);
-            const results = db.exec(sql);
+            
+            // Get list of actual table names for case-insensitive matching
+            const tableList = db.exec("SELECT name FROM sqlite_master WHERE type='table'");
+            const actualTableNames = tableList[0]?.values.map(v => String(v[0])) || [];
+            console.log('Available tables:', actualTableNames);
+
+            // Replace table names in query with correct casing
+            let modifiedSql = sql;
+            actualTableNames.forEach(tableName => {
+                const tableRegex = new RegExp(`\\b${tableName}\\b`, 'i');
+                modifiedSql = modifiedSql.replace(tableRegex, tableName);
+            });
+
+            console.log('Modified SQL query:', modifiedSql);
+            const results = db.exec(modifiedSql);
             console.log('Query results:', results);
             
             if (results.length === 0) {
@@ -137,10 +175,14 @@ class SQLService {
             }
 
             const columns = results[0].columns;
-            const rows = results[0].values.map((row, index) => ({
-                id: index,
-                row_data: Object.fromEntries(columns.map((col, i) => [col, row[i]]))
-            }));
+            // Return the rows directly as objects with column names as keys
+            const rows = results[0].values.map(row => {
+                const rowObj: any = {};
+                columns.forEach((col, i) => {
+                    rowObj[col] = row[i];
+                });
+                return rowObj;
+            });
 
             return { columns, rows };
         } catch (error) {

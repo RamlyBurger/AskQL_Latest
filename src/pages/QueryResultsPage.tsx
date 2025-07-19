@@ -51,6 +51,7 @@ const QueryResultsPage: React.FC = () => {
                         // Fetch all data for the table (no pagination)
                         const tableData = await DatabaseService.getTableData(table.id, 1, 1000000, undefined, undefined, 1000000);
                         console.log(`Table ${table.name} data:`, tableData);
+                        console.log('Table structure:', table);
                         
                         // Transform the data to match SQL.js format
                         const transformedData = tableData.data.map(row => ({
@@ -58,6 +59,11 @@ const QueryResultsPage: React.FC = () => {
                             // Extract data from row_data JSONB
                             ...row.row_data
                         }));
+
+                        console.log(`Transformed data for table ${table.name}:`, {
+                            sampleData: transformedData.slice(0, 2),
+                            totalRows: transformedData.length
+                        });
                         
                         return {
                             ...table,
@@ -66,6 +72,12 @@ const QueryResultsPage: React.FC = () => {
                         };
                     })
                 );
+
+                console.log('All tables with data:', tablesWithData.map(t => ({
+                    name: t.name,
+                    rowCount: t.data.length,
+                    columns: Object.keys(t.columnTypes || {})
+                })));
 
                 // Initialize SQL.js and create the database with the table data
                 const sqlService = SQLService.getInstance();

@@ -20,7 +20,7 @@ function App() {
                         <Route path="/database/:id" element={<DatabaseDetailPage />} />
                         <Route path="/table/:id" element={<TableDetailPage />} />
                     </Route>
-                    <Route path="/query-results" element={<QueryResultsPage />} />
+                    <Route path="/queryresults" element={<QueryResultsPage />} />
                     <Route path="/insights" element={<InsightsPage />} />
                     <Route path="/reset-database" element={<ResetDatabasePage />} />
                 </Routes>

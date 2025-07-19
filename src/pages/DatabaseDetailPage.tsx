@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useParams, useNavigate, useOutletContext } from 'react-router-dom';
 import type { Database, Table, TableFormData, Attribute, AttributeFormData } from '../services/DatabaseService';
 import { DatabaseService } from '../services/DatabaseService';
+import SQLService from '../services/SQLService';
 import TableDataView from '../components/TableDataView';
 import ImportCSVModal from '../components/ImportCSVModal';
 import AttributeModal from '../components/AttributeModal';
@@ -24,6 +25,20 @@ const DatabaseDetailPage = () => {
     const [isCreateTableModalOpen, setIsCreateTableModalOpen] = useState(false);
     const [isAttributeModalOpen, setIsAttributeModalOpen] = useState(false);
     const [selectedTable, setSelectedTable] = useState<Table | null>(null);
+
+    // Initialize SQL.js when the component mounts
+    useEffect(() => {
+        const initSQLJS = async () => {
+            try {
+                await SQLService.getInstance().init();
+            } catch (err: any) {
+                console.error('Failed to initialize SQL.js:', err);
+                setError('Failed to initialize SQL database. Please try refreshing the page.');
+            }
+        };
+        
+        initSQLJS();
+    }, []);
 
     const handleDeleteTable = async (tableId: number) => {
         if (!window.confirm('Are you sure you want to delete this table?')) return;

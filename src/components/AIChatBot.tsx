@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import ReactMarkdown from 'react-markdown';
 import GeminiService from '../services/GeminiService';
 import SQLService from '../services/SQLService';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { DatabaseService } from '../services/DatabaseService';
 import ChatService from '../services/ChatService';
 import type { ChatMessage as DBChatMessage, ChatSession } from '../services/ChatService';
@@ -493,7 +493,7 @@ const AIChatBot: React.FC<AIChatBotProps> = ({ apiKey, database }) => {
 
     const handleExecuteQuery = async (sql: string) => {
         try {
-            const queryUrl = `/query-results?sql=${encodeURIComponent(sql)}&dbId=${database?.id}`;
+            const queryUrl = `/queryresults?sql=${encodeURIComponent(sql)}&dbId=${database?.id}`;
             window.open(queryUrl, '_blank');
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : 'Failed to execute query';
@@ -699,6 +699,74 @@ const AIChatBot: React.FC<AIChatBotProps> = ({ apiKey, database }) => {
     const extractSQLQuery = (content: string): string | undefined => {
         const sqlMatch = content.match(/```sql\n([\s\S]*?)\n```/);
         return sqlMatch ? sqlMatch[1].trim() : undefined;
+    };
+
+    const renderMessage = (message: ChatMessage) => {
+        const isBot = message.sender === 'bot';
+        const sql = isBot ? extractSQLQuery(message.content) : undefined;
+
+        return (
+            <div
+                key={message.id}
+                className={`flex ${isBot ? 'justify-start' : 'justify-end'} mb-4`}
+            >
+                <div
+                    className={`rounded-lg p-4 max-w-[80%] ${
+                        isBot
+                            ? 'bg-gray-100 dark:bg-gray-700'
+                            : 'bg-blue-100 dark:bg-blue-900/30'
+                    }`}
+                >
+                    {/* Message content */}
+                    <div className="prose dark:prose-invert max-w-none">
+                        <ReactMarkdown>{message.content}</ReactMarkdown>
+                    </div>
+
+                    {/* Execute SQL button */}
+                    {sql && (
+                        <div className="mt-2 flex justify-end">
+                            <Link
+                                to={`/queryresults?sql=${encodeURIComponent(sql)}&dbId=${database.id}`}
+                                className="inline-flex items-center px-3 py-1 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 transition-colors"
+                            >
+                                Execute Query
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 ml-1" viewBox="0 0 20 20" fill="currentColor">
+                                    <path fillRule="evenodd" d="M10.293 3.293a1 1 0 011.414 0l6 6a1 1 0 010 1.414l-6 6a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-4.293-4.293a1 1 0 010-1.414z" clipRule="evenodd" />
+                                </svg>
+                            </Link>
+                        </div>
+                    )}
+
+                    {/* File attachments */}
+                    {message.attachments && message.attachments.length > 0 && (
+                        <div className="mt-2 space-y-2">
+                            {message.attachments.map((attachment, index) => (
+                                <div key={index} className="flex items-center">
+                                    {attachment.type === 'image' && attachment.url ? (
+                                        <img 
+                                            src={attachment.url} 
+                                            alt={attachment.fileName}
+                                            className="w-16 h-16 object-cover rounded mr-2"
+                                        />
+                                    ) : attachment.type === 'voice' && attachment.url ? (
+                                        <div className="w-48 bg-white rounded-lg p-2 shadow-sm flex items-center">
+                                            <FaMicrophone className="text-indigo-600 mr-2" />
+                                            <span className="text-xs text-gray-600">
+                                                {attachment.fileName}
+                                            </span>
+                                        </div>
+                                    ) : (
+                                        <div className="w-16 h-16 bg-gray-200 rounded flex items-center justify-center text-xs text-gray-600">
+                                            {attachment.type === 'file' ? 'File' : 'Unknown'}
+                                        </div>
+                                    )}
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            </div>
+        );
     };
 
     // Handle file uploads
