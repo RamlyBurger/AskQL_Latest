@@ -13,6 +13,44 @@ interface SQLiteResult {
     values: any[][];
 }
 
+interface DatabaseAnalytics {
+    overview: {
+        totalTables: number;
+        totalAttributes: number;
+        totalRows: number;
+        avgAttributesPerTable: string | number;
+    };
+    tableStats: Array<{
+        id: number;
+        name: string;
+        rowCount: number;
+        attributeCount: number;
+        description: string;
+    }>;
+    dataTypeDistribution: Record<string, number>;
+    tableDataDistribution: Array<{
+        name: string;
+        value: number;
+        percentage: string | number;
+    }>;
+    attributeAnalysis: Record<string, {
+        count: number;
+        tables: Set<string> | string[];
+        nullable: number;
+        primaryKeys: number;
+        foreignKeys: number;
+    }>;
+    dataGrowthTrend: Array<{
+        date: string;
+        count: number;
+    }>;
+    dataQuality: {
+        nullValues: number;
+        totalValues: number;
+        completenessPercentage: string | number;
+    };
+}
+
 export class TableDataController {
     private tableDataRepository: Repository<TableData>;
     private tableRepository: Repository<Table>;
@@ -752,4 +790,158 @@ export class TableDataController {
             return 0;
         });
     }
-} 
+
+    // Get comprehensive database analytics
+    async getDatabaseAnalytics(req: Request, res: Response) {
+        try {
+            const { databaseId } = req.params;
+
+            // Get database with all related data
+            const database = await this.databaseRepository.findOne({
+                where: { id: parseInt(databaseId) },
+                relations: ['tables', 'tables.attributes']
+            });
+
+            if (!database) {
+                return res.status(404).json({
+                    success: false,
+                    message: 'Database not found'
+                });
+            }
+
+            const analytics: DatabaseAnalytics = {
+                overview: {
+                    totalTables: database.tables.length,
+                    totalAttributes: database.tables.reduce((sum, table) => sum + table.attributes.length, 0),
+                    totalRows: 0,
+                    avgAttributesPerTable: database.tables.length > 0 ? 
+                        (database.tables.reduce((sum, table) => sum + table.attributes.length, 0) / database.tables.length).toFixed(2) : 0
+                },
+                tableStats: [],
+                dataTypeDistribution: {},
+                tableDataDistribution: [],
+                attributeAnalysis: {},
+                dataGrowthTrend: [],
+                dataQuality: {
+                    nullValues: 0,
+                    totalValues: 0,
+                    completenessPercentage: 0
+                }
+            };
+
+            // Analyze each table
+            for (const table of database.tables) {
+                // Get row count for this table
+                const rowCount = await this.tableDataRepository.count({
+                    where: { table_id: table.id }
+                });
+
+                analytics.overview.totalRows += rowCount;
+
+                // Table statistics
+                const tableStats = {
+                    id: table.id,
+                    name: table.name,
+                    rowCount,
+                    attributeCount: table.attributes.length,
+                    description: table.description || ''
+                };
+                analytics.tableStats.push(tableStats);
+
+                // Data type distribution
+                table.attributes.forEach(attr => {
+                    const dataType = attr.data_type.toLowerCase();
+                    analytics.dataTypeDistribution[dataType] = (analytics.dataTypeDistribution[dataType] || 0) + 1;
+                });
+
+                // Table data distribution for pie chart
+                analytics.tableDataDistribution.push({
+                    name: table.name,
+                    value: rowCount,
+                    percentage: 0 // Will calculate after getting total
+                });
+
+                // Attribute analysis
+                for (const attr of table.attributes) {
+                    if (!analytics.attributeAnalysis[attr.data_type]) {
+                        analytics.attributeAnalysis[attr.data_type] = {
+                            count: 0,
+                            tables: new Set<string>(),
+                            nullable: 0,
+                            primaryKeys: 0,
+                            foreignKeys: 0
+                        };
+                    }
+
+                    const analysis = analytics.attributeAnalysis[attr.data_type];
+                    analysis.count++;
+                    (analysis.tables as Set<string>).add(table.name);
+                    if (attr.is_nullable) analysis.nullable++;
+                    if (attr.is_primary_key) analysis.primaryKeys++;
+                    if (attr.is_foreign_key) analysis.foreignKeys++;
+                }
+
+                // Get sample data for data quality analysis
+                const sampleData = await this.tableDataRepository.find({
+                    where: { table_id: table.id },
+                    take: 100, // Sample first 100 rows
+                    order: { id: 'ASC' }
+                });
+
+                // Analyze data quality
+                sampleData.forEach(row => {
+                    Object.values(row.row_data).forEach(value => {
+                        analytics.dataQuality.totalValues++;
+                        if (value === null || value === undefined || value === '') {
+                            analytics.dataQuality.nullValues++;
+                        }
+                    });
+                });
+            }
+
+            // Calculate percentages for table data distribution
+            analytics.tableDataDistribution.forEach(table => {
+                table.percentage = analytics.overview.totalRows > 0 ? 
+                    ((table.value / analytics.overview.totalRows) * 100).toFixed(1) : 0;
+            });
+
+            // Convert attribute analysis sets to arrays
+            Object.keys(analytics.attributeAnalysis).forEach(dataType => {
+                analytics.attributeAnalysis[dataType].tables = Array.from(analytics.attributeAnalysis[dataType].tables as Set<string>);
+            });
+
+            // Calculate data quality percentage
+            analytics.dataQuality.completenessPercentage = analytics.dataQuality.totalValues > 0 ? 
+                parseFloat((((analytics.dataQuality.totalValues - analytics.dataQuality.nullValues) / analytics.dataQuality.totalValues) * 100).toFixed(1)) : 100;
+
+            // Get data growth trend (by creation dates)
+            const growthData = await this.tableDataRepository
+                .createQueryBuilder('table_data')
+                .select('DATE(table_data.created_at)', 'date')
+                .addSelect('COUNT(*)', 'count')
+                .innerJoin('tables', 't', 't.id = table_data.table_id')
+                .where('t.database_id = :databaseId', { databaseId: parseInt(databaseId) })
+                .groupBy('DATE(table_data.created_at)')
+                .orderBy('DATE(table_data.created_at)', 'ASC')
+                .limit(30) // Last 30 days
+                .getRawMany();
+
+            analytics.dataGrowthTrend = growthData.map(item => ({
+                date: item.date,
+                count: parseInt(item.count)
+            }));
+
+            return res.json({
+                success: true,
+                data: analytics
+            });
+
+        } catch (error) {
+            console.error('Error fetching database analytics:', error);
+            return res.status(500).json({
+                success: false,
+                message: 'Error fetching database analytics'
+            });
+        }
+    }
+}

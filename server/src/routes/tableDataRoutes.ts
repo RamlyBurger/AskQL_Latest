@@ -7,6 +7,9 @@ const tableDataController = new TableDataController();
 // Execute custom SQL query
 router.post('/execute-query', (req, res) => tableDataController.executeQuery(req, res));
 
+// Get database analytics
+router.get('/analytics/:databaseId', (req, res) => tableDataController.getDatabaseAnalytics(req, res));
+
 // Get table data samples
 router.get('/:tableId/data', (req, res) => tableDataController.getTableData(req, res));
 
@@ -22,4 +25,4 @@ router.delete('/:tableId/data/:rowId', (req, res) => tableDataController.deleteT
 // Delete all data for a table
 router.delete('/:tableId/data', (req, res) => tableDataController.deleteAllTableData(req, res));
 
-export default router; 
+export default router;

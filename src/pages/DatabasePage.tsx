@@ -30,6 +30,8 @@ interface DatabaseStats {
     active_connections: number;
     queries_today: number;
     avg_response_time: string;
+    total_rows?: number;
+    data_operations_today?: number;
 }
 
 interface ActivityLog {
@@ -42,6 +44,57 @@ interface ActivityLog {
 }
 
 const API_URL = 'http://localhost:3000/api';
+
+// Utility functions for tracking query performance
+const trackQueryTime = (duration: number) => {
+    const queryTimes = JSON.parse(localStorage.getItem('queryTimes') || '[]');
+    queryTimes.push({
+        duration,
+        timestamp: new Date().toISOString()
+    });
+    
+    // Keep only last 100 queries
+    if (queryTimes.length > 100) {
+        queryTimes.splice(0, queryTimes.length - 100);
+    }
+    
+    localStorage.setItem('queryTimes', JSON.stringify(queryTimes));
+};
+
+const getAverageQueryTime = (): string => {
+    const queryTimes = JSON.parse(localStorage.getItem('queryTimes') || '[]');
+    if (queryTimes.length === 0) return '0ms';
+    
+    const average = queryTimes.reduce((sum: number, query: any) => sum + query.duration, 0) / queryTimes.length;
+    return `${average.toFixed(2)}ms`;
+};
+
+// Activity logging functions
+const logActivity = (action: string, database: string, status: 'success' | 'warning' | 'error') => {
+    const activities = JSON.parse(localStorage.getItem('recentActivities') || '[]');
+    const newActivity = {
+        id: Date.now(),
+        action,
+        database,
+        user: 'Current User',
+        timestamp: new Date().toISOString(),
+        status
+    };
+    
+    activities.unshift(newActivity);
+    
+    // Keep only last 50 activities
+    if (activities.length > 50) {
+        activities.splice(50);
+    }
+    
+    localStorage.setItem('recentActivities', JSON.stringify(activities));
+};
+
+const getRecentActivities = (): ActivityLog[] => {
+    const activities = JSON.parse(localStorage.getItem('recentActivities') || '[]');
+    return activities.slice(0, 10); // Return only last 10 for display
+};
 
 const DatabasePage = () => {
     const navigate = useNavigate();
@@ -59,32 +112,7 @@ const DatabasePage = () => {
         queries_today: 0,
         avg_response_time: '0ms'
     });
-    const [recentActivity] = useState<ActivityLog[]>([
-        {
-            id: 1,
-            action: 'Database created',
-            database: 'Sales_DB',
-            user: 'John Doe',
-            timestamp: new Date().toISOString(),
-            status: 'success'
-        },
-        {
-            id: 2,
-            action: 'Backup completed',
-            database: 'Analytics_DB',
-            user: 'System',
-            timestamp: new Date().toISOString(),
-            status: 'success'
-        },
-        {
-            id: 3,
-            action: 'High CPU usage detected',
-            database: 'Users_DB',
-            user: 'System',
-            timestamp: new Date().toISOString(),
-            status: 'warning'
-        }
-    ]);
+    const [recentActivity, setRecentActivity] = useState<ActivityLog[]>([]);
     const [formData, setFormData] = useState<DatabaseFormData>({
         name: '',
         description: '',
@@ -99,41 +127,69 @@ const DatabasePage = () => {
             once: true
         });
 
+        // Load recent activities from localStorage
+        setRecentActivity(getRecentActivities());
+
         // Fetch databases and update stats
         fetchDatabases();
         fetchStats();
     }, []);
 
     const fetchDatabases = async () => {
+        const startTime = performance.now();
         try {
             const response = await fetch(`${API_URL}/databases`);
+            const endTime = performance.now();
+            const duration = endTime - startTime;
+            trackQueryTime(duration);
+            
             const data = await response.json();
             if (data.success) {
                 setDatabases(data.data);
             }
         } catch (error) {
+            const endTime = performance.now();
+            const duration = endTime - startTime;
+            trackQueryTime(duration);
+            
             console.error('Error fetching databases:', error);
             setError('Failed to fetch databases');
         }
     };
 
     const fetchStats = async () => {
+        const startTime = performance.now();
         try {
             const response = await fetch(`${API_URL}/databases/statistics`);
+            const endTime = performance.now();
+            const duration = endTime - startTime;
+            
+            // Track this query time
+            trackQueryTime(duration);
+            
             const data = await response.json();
             if (data.success) {
-                setStats(data.data);
+                // Override avg_response_time with localStorage data
+                const statsWithRealAvg = {
+                    ...data.data,
+                    avg_response_time: getAverageQueryTime()
+                };
+                setStats(statsWithRealAvg);
             }
         } catch (error) {
+            const endTime = performance.now();
+            const duration = endTime - startTime;
+            trackQueryTime(duration);
+            
             console.error('Error fetching statistics:', error);
-            // Fallback to mock stats if API fails
+            // Fallback to basic stats if API fails
             setStats({
                 total_databases: databases.length,
                 total_tables: databases.reduce((acc, db) => acc + (db.tables?.length || 0), 0),
                 total_size: '0 GB',
-                active_connections: 0,
+                active_connections: Math.max(databases.length, 1),
                 queries_today: 0,
-                avg_response_time: '0ms'
+                avg_response_time: getAverageQueryTime()
             });
         }
     };
@@ -143,6 +199,7 @@ const DatabasePage = () => {
         setIsLoading(true);
         setError(null); // Clear any previous errors
         
+        const startTime = performance.now();
         try {
             // Basic validation
             if (!formData.name.trim()) {
@@ -157,12 +214,23 @@ const DatabasePage = () => {
                 body: JSON.stringify(formData),
             });
 
+            const endTime = performance.now();
+            const duration = endTime - startTime;
+            trackQueryTime(duration);
+
             const data = await response.json();
             
             if (data.success) {
+                // Log activity
+                logActivity('Database created', formData.name, 'success');
+                
                 // Refresh the database list and statistics
                 await fetchDatabases();
                 await fetchStats();
+                
+                // Update recent activities display
+                setRecentActivity(getRecentActivities());
+                
                 setIsCreateModalOpen(false);
                 // Reset form data
                 setFormData({
@@ -174,6 +242,14 @@ const DatabasePage = () => {
                 throw new Error(data.message || 'Failed to create database');
             }
         } catch (error: any) {
+            const endTime = performance.now();
+            const duration = endTime - startTime;
+            trackQueryTime(duration);
+            
+            // Log failed activity
+            logActivity('Database creation failed', formData.name, 'error');
+            setRecentActivity(getRecentActivities());
+            
             console.error('Error creating database:', error);
             setError(error.message || 'Failed to create database. The database name must be unique.');
         } finally {
@@ -184,7 +260,9 @@ const DatabasePage = () => {
     const handleEditDatabase = async (e: React.FormEvent) => {
         e.preventDefault();
         setIsLoading(true);
+        setError(null); // Clear any previous errors
         
+        const startTime = performance.now();
         try {
             const response = await fetch(`${API_URL}/databases/${selectedDatabase?.id}`, {
                 method: 'PUT',
@@ -194,17 +272,45 @@ const DatabasePage = () => {
                 body: JSON.stringify(formData),
             });
 
+            const endTime = performance.now();
+            const duration = endTime - startTime;
+            trackQueryTime(duration);
+
             const data = await response.json();
             
             if (data.success) {
+                // Log activity
+                logActivity('Database updated', formData.name, 'success');
+                
                 // Refresh the database list and statistics
                 await fetchDatabases();
                 await fetchStats();
+                
+                // Update recent activities display
+                setRecentActivity(getRecentActivities());
+                
                 setIsEditModalOpen(false);
                 setSelectedDatabase(null);
+                // Reset form data
+                setFormData({
+                    name: '',
+                    description: '',
+                    database_type: 'postgresql'
+                });
+            } else {
+                throw new Error(data.message || 'Failed to update database');
             }
-        } catch (error) {
+        } catch (error: any) {
+            const endTime = performance.now();
+            const duration = endTime - startTime;
+            trackQueryTime(duration);
+            
+            // Log failed activity
+            logActivity('Database update failed', formData.name, 'error');
+            setRecentActivity(getRecentActivities());
+            
             console.error('Error updating database:', error);
+            setError(error.message || 'Failed to update database.');
         } finally {
             setIsLoading(false);
         }
@@ -215,19 +321,38 @@ const DatabasePage = () => {
             return;
         }
 
+        const startTime = performance.now();
         try {
             const response = await fetch(`${API_URL}/databases/${id}`, {
                 method: 'DELETE',
             });
 
+            const endTime = performance.now();
+            const duration = endTime - startTime;
+            trackQueryTime(duration);
+
             const data = await response.json();
             
             if (data.success) {
+                // Log activity
+                logActivity('Database deleted', databases.find(db => db.id === id)?.name || 'Unknown Database', 'success');
+                
                 // Refresh the database list and statistics
                 await fetchDatabases();
                 await fetchStats();
+                
+                // Update recent activities display
+                setRecentActivity(getRecentActivities());
             }
         } catch (error) {
+            const endTime = performance.now();
+            const duration = endTime - startTime;
+            trackQueryTime(duration);
+            
+            // Log failed activity
+            logActivity('Database deletion failed', databases.find(db => db.id === id)?.name || 'Unknown Database', 'error');
+            setRecentActivity(getRecentActivities());
+            
             console.error('Error deleting database:', error);
         }
     };
@@ -256,6 +381,29 @@ const DatabasePage = () => {
         }
     };
 
+    const checkDatabaseNameExists = (name: string): boolean => {
+        return databases.some(db => 
+            db.name.toLowerCase() === name.toLowerCase() && 
+            (!selectedDatabase || db.id !== selectedDatabase.id)
+        );
+    };
+
+    const handleFormDataChange = (field: keyof DatabaseFormData, value: string) => {
+        setFormData(prev => ({...prev, [field]: value}));
+        
+        // Clear error when user starts typing
+        if (error) {
+            setError(null);
+        }
+        
+        // Check for duplicate names in real-time
+        if (field === 'name' && value.trim()) {
+            if (checkDatabaseNameExists(value.trim())) {
+                setError(`A database with the name "${value}" already exists. Please choose a different name.`);
+            }
+        }
+    };
+
     return (
         <main className="container mx-auto px-4 py-8">
             {/* Header Section */}
@@ -280,7 +428,7 @@ const DatabasePage = () => {
             </div>
 
             {/* Stats Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
                 {/* Total Databases */}
                 <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6 transition-transform hover:scale-[1.02]">
                     <div className="flex items-center justify-between">
@@ -338,6 +486,26 @@ const DatabasePage = () => {
                     <div className="mt-4">
                         <p className="text-sm text-gray-600 dark:text-gray-400">
                             Avg. response time: {stats.avg_response_time}
+                        </p>
+                    </div>
+                </div>
+
+                {/* Total Data Rows */}
+                <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6 transition-transform hover:scale-[1.02]">
+                    <div className="flex items-center justify-between">
+                        <div>
+                            <p className="text-sm text-gray-600 dark:text-gray-400">Total Data Rows</p>
+                            <h3 className="text-2xl font-bold text-gray-900 dark:text-white">{(stats.total_rows || 0).toLocaleString()}</h3>
+                        </div>
+                        <div className="bg-orange-100 dark:bg-orange-900/30 p-3 rounded-lg">
+                            <svg className="w-6 h-6 text-orange-600 dark:text-orange-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4" />
+                            </svg>
+                        </div>
+                    </div>
+                    <div className="mt-4">
+                        <p className="text-sm text-gray-600 dark:text-gray-400">
+                            {stats.data_operations_today || 0} operations today
                         </p>
                     </div>
                 </div>
@@ -403,14 +571,35 @@ const DatabasePage = () => {
                                                 </div>
                                             </td>
                                             <td className="py-3 px-4 text-right">
-                                                <button
-                                                    onClick={() => handleDeleteDatabase(database.id)}
-                                                    className="text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300 ml-2 transition-colors"
-                                                >
-                                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                                    </svg>
-                                                </button>
+                                                <div className="flex items-center justify-end space-x-2">
+                                                    <button
+                                                        onClick={() => {
+                                                            setSelectedDatabase(database);
+                                                            setFormData({
+                                                                name: database.name,
+                                                                description: database.description || '',
+                                                                database_type: database.database_type
+                                                            });
+                                                            setError(null);
+                                                            setIsEditModalOpen(true);
+                                                        }}
+                                                        className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 transition-colors"
+                                                        title="Edit Database"
+                                                    >
+                                                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                                                        </svg>
+                                                    </button>
+                                                    <button
+                                                        onClick={() => handleDeleteDatabase(database.id)}
+                                                        className="text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300 transition-colors"
+                                                        title="Delete Database"
+                                                    >
+                                                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                                        </svg>
+                                                    </button>
+                                                </div>
                                             </td>
                                         </tr>
                                     ))}
@@ -488,8 +677,7 @@ const DatabasePage = () => {
                                         required
                                         value={formData.name}
                                         onChange={(e) => {
-                                            setFormData({...formData, name: e.target.value});
-                                            setError(null); // Clear error when user types
+                                            handleFormDataChange('name', e.target.value);
                                         }}
                                         className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-purple-500 dark:focus:ring-purple-400 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                                         placeholder="Enter database name"
@@ -502,7 +690,7 @@ const DatabasePage = () => {
                                     <input
                                         type="text"
                                         value={formData.description}
-                                        onChange={(e) => setFormData({...formData, description: e.target.value})}
+                                        onChange={(e) => handleFormDataChange('description', e.target.value)}
                                         className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-purple-500 dark:focus:ring-purple-400 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                                         placeholder="Enter database description"
                                     />
@@ -514,7 +702,7 @@ const DatabasePage = () => {
                                     <select
                                         required
                                         value={formData.database_type}
-                                        onChange={(e) => setFormData({...formData, database_type: e.target.value})}
+                                        onChange={(e) => handleFormDataChange('database_type', e.target.value)}
                                         className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-purple-500 dark:focus:ring-purple-400 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                                     >
                                         <option value="postgresql">PostgreSQL</option>
@@ -561,4 +749,4 @@ const DatabasePage = () => {
     );
 };
 
-export default DatabasePage; 
+export default DatabasePage;

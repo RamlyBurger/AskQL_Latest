@@ -4,7 +4,6 @@ import DatabasePage from './pages/DatabasePage';
 import DatabaseDetailPage from './pages/DatabaseDetailPage';
 import TableDetailPage from './pages/TableDetailPage';
 import QueryResultsPage from './pages/QueryResultsPage';
-import InsightsPage from './pages/InsightsPage';
 import ResetDatabasePage from './pages/ResetDatabasePage';
 import Layout from './components/shared/Layout';
 import DatabaseViewWrapper from './components/DatabaseViewWrapper';
@@ -21,7 +20,6 @@ function App() {
                         <Route path="/table/:id" element={<TableDetailPage />} />
                     </Route>
                     <Route path="/queryresults" element={<QueryResultsPage />} />
-                    <Route path="/insights" element={<InsightsPage />} />
                     <Route path="/reset-database" element={<ResetDatabasePage />} />
                 </Routes>
             </Layout>
