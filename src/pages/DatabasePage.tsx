@@ -59,7 +59,7 @@ const DatabasePage = () => {
         queries_today: 0,
         avg_response_time: '0ms'
     });
-    const [recentActivity, setRecentActivity] = useState<ActivityLog[]>([
+    const [recentActivity] = useState<ActivityLog[]>([
         {
             id: 1,
             action: 'Database created',
@@ -233,7 +233,7 @@ const DatabasePage = () => {
     };
 
     // Format the date to a relative time string
-    const getRelativeTime = (date: string) => {
+    const formatRelativeTime = (date: string) => {
         const now = new Date();
         const updated = new Date(date);
         const diffInHours = Math.abs(now.getTime() - updated.getTime()) / 36e5;
@@ -451,7 +451,7 @@ const DatabasePage = () => {
                                                 {activity.database} by {activity.user}
                                             </p>
                                             <p className="text-xs text-gray-500 dark:text-gray-500 mt-1">
-                                                {new Date(activity.timestamp).toLocaleTimeString()}
+                                                {formatRelativeTime(activity.timestamp)}
                                             </p>
                                         </div>
                                     </div>
