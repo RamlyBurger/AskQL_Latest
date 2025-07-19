@@ -6,7 +6,6 @@ import {
     getPaginationRowModel,
     getSortedRowModel,
     getFilteredRowModel,
-    createColumnHelper,
     flexRender,
     type ColumnDef,
     type SortingState,
@@ -32,7 +31,7 @@ const QueryResultsPage: React.FC = () => {
     const sql = searchParams.get('sql');
     const dbId = searchParams.get('dbId');
 
-    // Add function to handle DELETE operations
+    // Add function to handle DELETE operations (sql.js only, no database changes)
     const handleDeleteOperation = async (sql: string, dbId: string) => {
         try {
             // Parse the table name from the DELETE query
@@ -42,93 +41,79 @@ const QueryResultsPage: React.FC = () => {
             }
 
             const tableName = match[1];
-            console.log('Deleting from table:', tableName);
+            console.log('Executing DELETE in sql.js for table:', tableName);
 
-            // Get the table data first
+            // Get the database structure with tables and their attributes
             const database = await DatabaseService.getDatabaseById(parseInt(dbId));
-            const table = database.tables?.find(t => t.name.toLowerCase() === tableName.toLowerCase());
             
-            if (!table) {
-                throw new Error(`Table ${tableName} not found`);
-            }
-
-            // Get all data for the table
-            const tableData = await DatabaseService.getTableData(table.id, 1, 1000000);
-            console.log('Current table data:', {
-                total: tableData.data.length,
-                sample: tableData.data.slice(0, 2)
-            });
-
-            // Create a mapping of row positions to TableData IDs
-            const rowIdMapping = tableData.data.reduce((acc, row, index) => {
-                acc[index] = row.id;
-                return acc;
-            }, {} as Record<number, number>);
-
-            // Create a temporary SQLite database with the current data
-            const sqlService = SQLService.getInstance();
-            const tableWithIds = {
-                ...table,
-                data: tableData.data.map((row) => ({
-                    ...row.row_data,
-                    _table_data_id: row.id // Use the TableData entity ID
-                })),
-                attributes: [
-                    {
-                        name: '_table_data_id',
-                        data_type: 'INTEGER',
-                        is_nullable: false,
-                        is_primary_key: true,
-                        is_foreign_key: false
-                    },
-                    ...Object.entries(tableData.columnTypes).map(([name, type]) => ({
+            // For each table, fetch its data and ensure we have attributes
+            const tablesWithData = await Promise.all(
+                (database.tables || []).map(async (table) => {
+                    // First get the complete table info including attributes
+                    const tableInfo = await DatabaseService.getTableById(table.id);
+                    
+                    // Then fetch all data for the table (no pagination)
+                    const tableData = await DatabaseService.getTableData(table.id, 1, 1000000, undefined, undefined, 1000000);
+                    
+                    // Create attributes array from the column types
+                    const attributes = Object.entries(tableData.columnTypes).map(([name, data_type]) => ({
                         name,
-                        data_type: type,
+                        data_type,
                         is_nullable: true,
                         is_primary_key: false,
                         is_foreign_key: false
-                    }))
-                ]
-            };
+                    }));
+                    
+                    // Transform the data to match SQL.js format
+                    const transformedData = tableData.data.map(row => row.row_data);
+                    
+                    return {
+                        ...tableInfo,
+                        data: transformedData,
+                        attributes
+                    };
+                })
+            );
 
-            await sqlService.createDatabase(parseInt(dbId), [tableWithIds]);
+            // Initialize SQL.js and create the database with the table data
+            const sqlService = SQLService.getInstance();
+            await sqlService.createDatabase(parseInt(dbId), tablesWithData);
 
-            // First get the IDs of rows that will be deleted
+            // First get the count of rows that will be deleted
             const whereClause = sql.match(/WHERE\s+(.+)/i)?.[1] || '';
-            const selectSql = whereClause 
-                ? `SELECT _table_data_id FROM ${tableName} WHERE ${whereClause}`
-                : `SELECT _table_data_id FROM ${tableName}`;
+            const countSql = whereClause 
+                ? `SELECT COUNT(*) as count FROM ${tableName} WHERE ${whereClause}`
+                : `SELECT COUNT(*) as count FROM ${tableName}`;
             
-            console.log('Executing SELECT query:', selectSql);
-            const rowsToDelete = await sqlService.executeQuery(parseInt(dbId), selectSql);
-            console.log('Rows to delete:', rowsToDelete);
+            console.log('Executing COUNT query:', countSql);
+            const countResult = await sqlService.executeQuery(parseInt(dbId), countSql);
+            const deletedCount = countResult.rows[0]?.count || 0;
 
-            // Execute the DELETE query in SQL.js to verify it works
+            // Execute the DELETE query in SQL.js
             console.log('Executing DELETE query:', sql);
             await sqlService.executeQuery(parseInt(dbId), sql);
 
-            // Delete the rows from the actual database
-            if (rowsToDelete.rows.length > 0) {
-                console.log(`Deleting ${rowsToDelete.rows.length} rows...`);
-                const deletePromises = rowsToDelete.rows.map(async (row: any) => {
-                    try {
-                        console.log(`Deleting row with TableData ID ${row._table_data_id}`);
-                        await DatabaseService.deleteTableRow(table.id, row._table_data_id);
-                        console.log(`Successfully deleted row ${row._table_data_id}`);
-                    } catch (error) {
-                        console.error(`Failed to delete row ${row._table_data_id}:`, error);
-                        throw error;
-                    }
-                });
+            // Get the remaining data after deletion to show the results
+            const selectAfterDelete = `SELECT * FROM ${tableName}`;
+            const remainingData = await sqlService.executeQuery(parseInt(dbId), selectAfterDelete);
+            
+            console.log(`DELETE operation completed. ${deletedCount} rows deleted, ${remainingData.rows.length} rows remaining.`);
 
-                await Promise.all(deletePromises);
-                console.log('Database sync completed');
-            }
+            // Find the table's column types for proper display
+            const table = tablesWithData.find(t => t.name.toLowerCase() === tableName.toLowerCase());
+            const columnTypes = table?.attributes?.reduce((acc, attr) => {
+                acc[attr.name] = attr.data_type;
+                return acc;
+            }, {} as Record<string, string>) || {};
 
             return {
                 success: true,
-                message: `Deleted ${rowsToDelete.rows.length} rows`,
-                affectedRows: rowsToDelete.rows.length
+                message: `DELETE operation executed: ${deletedCount} rows deleted`,
+                result: {
+                    ...remainingData,
+                    columnTypes
+                },
+                affectedRows: deletedCount
             };
         } catch (error: any) {
             console.error('Error executing DELETE operation:', error);
@@ -136,7 +121,7 @@ const QueryResultsPage: React.FC = () => {
         }
     };
 
-    // Update the handleUpdateOperation function
+    // Update the handleUpdateOperation function (sql.js only, no database changes)
     const handleUpdateOperation = async (sql: string, dbId: string) => {
         try {
             // Parse the table name from the UPDATE query
@@ -146,87 +131,79 @@ const QueryResultsPage: React.FC = () => {
             }
 
             const tableName = match[1];
-            console.log('Updating table:', tableName);
+            console.log('Executing UPDATE in sql.js for table:', tableName);
 
-            // Get the table data first
+            // Get the database structure with tables and their attributes
             const database = await DatabaseService.getDatabaseById(parseInt(dbId));
-            const table = database.tables?.find(t => t.name.toLowerCase() === tableName.toLowerCase());
             
-            if (!table) {
-                throw new Error(`Table ${tableName} not found`);
-            }
-
-            // Get all data for the table
-            const tableData = await DatabaseService.getTableData(table.id, 1, 1000000);
-            console.log('Current table data:', {
-                total: tableData.data.length,
-                sample: tableData.data.slice(0, 2)
-            });
-
-            // Create a temporary SQLite database with the current data
-            const sqlService = SQLService.getInstance();
-            const tableWithIds = {
-                ...table,
-                data: tableData.data.map(row => ({
-                    ...row.row_data,
-                    _table_data_id: row.id
-                })),
-                attributes: [
-                    {
-                        name: '_table_data_id',
-                        data_type: 'INTEGER',
-                        is_nullable: false,
-                        is_primary_key: true,
-                        is_foreign_key: false
-                    },
-                    ...Object.entries(tableData.columnTypes).map(([name, type]) => ({
+            // For each table, fetch its data and ensure we have attributes
+            const tablesWithData = await Promise.all(
+                (database.tables || []).map(async (table) => {
+                    // First get the complete table info including attributes
+                    const tableInfo = await DatabaseService.getTableById(table.id);
+                    
+                    // Then fetch all data for the table (no pagination)
+                    const tableData = await DatabaseService.getTableData(table.id, 1, 1000000, undefined, undefined, 1000000);
+                    
+                    // Create attributes array from the column types
+                    const attributes = Object.entries(tableData.columnTypes).map(([name, data_type]) => ({
                         name,
-                        data_type: type,
+                        data_type,
                         is_nullable: true,
                         is_primary_key: false,
                         is_foreign_key: false
-                    }))
-                ]
-            };
+                    }));
+                    
+                    // Transform the data to match SQL.js format
+                    const transformedData = tableData.data.map(row => row.row_data);
+                    
+                    return {
+                        ...tableInfo,
+                        data: transformedData,
+                        attributes
+                    };
+                })
+            );
 
-            await sqlService.createDatabase(parseInt(dbId), [tableWithIds]);
+            // Initialize SQL.js and create the database with the table data
+            const sqlService = SQLService.getInstance();
+            await sqlService.createDatabase(parseInt(dbId), tablesWithData);
+
+            // First get the count of rows that will be updated
+            const whereClause = sql.match(/WHERE\s+(.+)/i)?.[1] || '';
+            const countSql = whereClause 
+                ? `SELECT COUNT(*) as count FROM ${tableName} WHERE ${whereClause}`
+                : `SELECT COUNT(*) as count FROM ${tableName}`;
+            
+            console.log('Executing COUNT query:', countSql);
+            const countResult = await sqlService.executeQuery(parseInt(dbId), countSql);
+            const updatedCount = countResult.rows[0]?.count || 0;
 
             // Execute the UPDATE query in SQL.js
             console.log('Executing UPDATE query:', sql);
             await sqlService.executeQuery(parseInt(dbId), sql);
 
-            // Get all rows from the updated table
-            const selectSql = `SELECT * FROM ${tableName}`;
-            const updatedRows = await sqlService.executeQuery(parseInt(dbId), selectSql);
-            console.log('Updated data:', updatedRows);
+            // Get the updated data after update to show the results
+            const selectAfterUpdate = `SELECT * FROM ${tableName}`;
+            const updatedData = await sqlService.executeQuery(parseInt(dbId), selectAfterUpdate);
+            
+            console.log(`UPDATE operation completed. ${updatedCount} rows updated, ${updatedData.rows.length} rows total.`);
 
-            // Count how many rows were actually changed
-            const changedRows = updatedRows.rows.filter((newRow: any, index: number) => {
-                const oldRow = tableData.data[index].row_data;
-                return JSON.stringify(oldRow) !== JSON.stringify(newRow);
-            });
-
-            // Update all rows in the actual database
-            console.log(`Syncing ${updatedRows.rows.length} rows back to database...`);
-            const updatePromises = updatedRows.rows.map(async (row: any, index: number) => {
-                try {
-                    const originalRow = tableData.data[index];
-                    // Remove the _table_data_id from the row data
-                    const { _table_data_id, ...rowData } = row;
-                    await DatabaseService.updateTableRow(table.id, originalRow.id, rowData);
-                } catch (error) {
-                    console.error(`Failed to sync row ${index}:`, error);
-                    throw error;
-                }
-            });
-
-            await Promise.all(updatePromises);
-            console.log('Database sync completed');
+            // Find the table's column types for proper display
+            const table = tablesWithData.find(t => t.name.toLowerCase() === tableName.toLowerCase());
+            const columnTypes = table?.attributes?.reduce((acc, attr) => {
+                acc[attr.name] = attr.data_type;
+                return acc;
+            }, {} as Record<string, string>) || {};
 
             return {
                 success: true,
-                message: `Updated ${changedRows.length} rows`,
-                affectedRows: changedRows.length
+                message: `UPDATE operation executed: ${updatedCount} rows updated`,
+                result: {
+                    ...updatedData,
+                    columnTypes
+                },
+                affectedRows: updatedCount
             };
         } catch (error: any) {
             console.error('Error executing UPDATE operation:', error);
@@ -246,22 +223,32 @@ const QueryResultsPage: React.FC = () => {
                 // Check if it's a DELETE operation
                 if (sql.trim().toUpperCase().startsWith('DELETE')) {
                     const result = await handleDeleteOperation(sql, dbId);
-                    setResults({
-                        columns: ['message'],
-                        rows: [{ message: result.message }],
-                        columnTypes: { message: 'VARCHAR' }
-                    });
+                    // Display the remaining data after deletion instead of just a message
+                    if (result.result) {
+                        setResults(result.result);
+                    } else {
+                        setResults({
+                            columns: ['message'],
+                            rows: [{ message: result.message }],
+                            columnTypes: { message: 'VARCHAR' }
+                        });
+                    }
                     return;
                 }
 
                 // Check if it's an UPDATE operation
                 if (sql.trim().toUpperCase().startsWith('UPDATE')) {
                     const result = await handleUpdateOperation(sql, dbId);
-                    setResults({
-                        columns: ['message'],
-                        rows: [{ message: result.message }],
-                        columnTypes: { message: 'VARCHAR' }
-                    });
+                    // Display the updated data instead of just a message
+                    if (result.result) {
+                        setResults(result.result);
+                    } else {
+                        setResults({
+                            columns: ['message'],
+                            rows: [{ message: result.message }],
+                            columnTypes: { message: 'VARCHAR' }
+                        });
+                    }
                     return;
                 }
 
@@ -347,8 +334,6 @@ const QueryResultsPage: React.FC = () => {
         loadDatabaseAndExecuteQuery();
     }, [sql, dbId]);
 
-    const columnHelper = createColumnHelper<any>();
-
     const columns = useMemo(() => {
         if (!results?.columns) return [];
 
@@ -357,7 +342,7 @@ const QueryResultsPage: React.FC = () => {
             {
                 id: 'rowNumber',
                 header: '#',
-                accessorFn: (row: any, index: number) => index + 1,
+                accessorFn: (_row: any, index: number) => index + 1,
                 cell: (info) => info.getValue(),
                 enableSorting: true,
             }
