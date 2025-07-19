@@ -129,3 +129,14 @@ GEMINI_API_KEY=your_gemini_api_key_here
 # Server Configuration
 PORT=3000
 NODE_ENV=development
+
+# Add-on:
+Create a .env file with the following content, put it in project root folder and server folder
+```
+DB_HOST=localhost
+DB_PORT=5432
+DB_USERNAME=postgres
+DB_PASSWORD=1234
+DB_DATABASE=askql_db
+VITE_GEMINI_API_KEY=AIzaSyAL-L6gJcUtxIJkTmGaS87rKCFai5XH2Tk
+```
