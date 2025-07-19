@@ -101,7 +101,7 @@ const DatabasePage = () => {
 
         // Fetch databases and update stats
         fetchDatabases();
-        updateStats();
+        fetchStats();
     }, []);
 
     const fetchDatabases = async () => {
@@ -109,16 +109,7 @@ const DatabasePage = () => {
             const response = await fetch(`${API_URL}/databases`);
             const data = await response.json();
             if (data.success) {
-                // Add mock data for demonstration
-                const enhancedData = data.data.map((db: Database) => ({
-                    ...db,
-                    size: Math.floor(Math.random() * 100) + ' GB',
-                    status: Math.random() > 0.8 ? 'warning' : 'healthy',
-                    performance: Math.floor(Math.random() * 100),
-                    queries_per_second: Math.floor(Math.random() * 1000),
-                    active_connections: Math.floor(Math.random() * 100)
-                }));
-                setDatabases(enhancedData);
+                setDatabases(data.data);
             }
         } catch (error) {
             console.error('Error fetching databases:', error);
@@ -126,16 +117,25 @@ const DatabasePage = () => {
         }
     };
 
-    const updateStats = () => {
-        // Mock stats update
-        setStats({
-            total_databases: databases.length,
-            total_tables: databases.reduce((acc, db) => acc + (db.tables?.length || 0), 0),
-            total_size: databases.reduce((acc, db) => acc + parseInt(db.size || '0'), 0) + ' GB',
-            active_connections: Math.floor(Math.random() * 1000),
-            queries_today: Math.floor(Math.random() * 100000),
-            avg_response_time: (Math.random() * 100).toFixed(2) + 'ms'
-        });
+    const fetchStats = async () => {
+        try {
+            const response = await fetch(`${API_URL}/databases/statistics`);
+            const data = await response.json();
+            if (data.success) {
+                setStats(data.data);
+            }
+        } catch (error) {
+            console.error('Error fetching statistics:', error);
+            // Fallback to mock stats if API fails
+            setStats({
+                total_databases: databases.length,
+                total_tables: databases.reduce((acc, db) => acc + (db.tables?.length || 0), 0),
+                total_size: '0 GB',
+                active_connections: 0,
+                queries_today: 0,
+                avg_response_time: '0ms'
+            });
+        }
     };
 
     const handleCreateDatabase = async (e: React.FormEvent) => {
@@ -160,8 +160,9 @@ const DatabasePage = () => {
             const data = await response.json();
             
             if (data.success) {
-                // Refresh the database list
+                // Refresh the database list and statistics
                 await fetchDatabases();
+                await fetchStats();
                 setIsCreateModalOpen(false);
                 // Reset form data
                 setFormData({
@@ -196,8 +197,9 @@ const DatabasePage = () => {
             const data = await response.json();
             
             if (data.success) {
-                // Refresh the database list
+                // Refresh the database list and statistics
                 await fetchDatabases();
+                await fetchStats();
                 setIsEditModalOpen(false);
                 setSelectedDatabase(null);
             }
@@ -221,8 +223,9 @@ const DatabasePage = () => {
             const data = await response.json();
             
             if (data.success) {
-                // Refresh the database list
+                // Refresh the database list and statistics
                 await fetchDatabases();
+                await fetchStats();
             }
         } catch (error) {
             console.error('Error deleting database:', error);

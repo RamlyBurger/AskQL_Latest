@@ -5,6 +5,7 @@ const router = express.Router();
 
 // Special routes that need to come first
 router.post('/reset', DatabaseController.resetDatabase);
+router.get('/statistics', DatabaseController.getStatistics);
 
 // Standard CRUD routes
 router.get('/', DatabaseController.getAllDatabases);
@@ -15,4 +16,4 @@ router.get('/:id', DatabaseController.getDatabaseById);
 router.put('/:id', DatabaseController.updateDatabase);
 router.delete('/:id', DatabaseController.deleteDatabase);
 
-export default router; 
+export default router;

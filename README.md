@@ -12,6 +12,7 @@ They lack:
 This reliance on intermediaries slows down business intelligence, increases costs, and prevents organizations from making timely, data-driven decisions.
 
 ![AskQL Logo](src/assets/askql_logo.gif)
+![AskQL Logo](src/assets/intro.gif)
 
 ## Overview
 
