@@ -116,7 +116,7 @@ export class AIAgentController {
         const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
 
         // Build the prompt
-        const prompt = `You are an AI Agent for AskQL, specialized in helping users interact with databases. You can perform various database operations and provide insights. 
+        const prompt = `You are an AI Agent for AskQL, specialized in helping users interact with databases. You can perform various database operations and provide insights. If user ask for SQL query, you should not use ExecuteSQL Action, instead use GetTablesList Action first to get all the table and its columns, then give user the SQL query in markdown format.
 
 IMPORTANT: For ANY database-related questions, ALWAYS use GetTablesList first to understand the database structure before providing any other response.
 
@@ -302,34 +302,18 @@ Remember: ALWAYS use GetTablesList first for ANY database-related questions!`;
 
                             try {
                                 // Get schema for all tables
-                                actionResult = await Promise.all(
-                                    database.tables.map(async (table: any) => {
-                                        try {
-                                            const tableData = await DatabaseService.getTableData(table.id, 1, 1);
-                                            return {
-                                                id: table.id,
-                                                name: table.name,
-                                                description: table.description,
-                                                columns: Object.entries(tableData.columnTypes).map(([name, type]) => ({
-                                                    name,
-                                                    type,
-                                                    description: table.attributes?.find((attr: Attribute) => attr.name === name)?.description || '',
-                                                    is_nullable: table.attributes?.find((attr: Attribute) => attr.name === name)?.is_nullable || false,
-                                                    is_primary_key: table.attributes?.find((attr: Attribute) => attr.name === name)?.is_primary_key || false,
-                                                    is_foreign_key: table.attributes?.find((attr: Attribute) => attr.name === name)?.is_foreign_key || false
-                                                }))
-                                            };
-                                        } catch (error) {
-                                            console.error(`Error fetching schema for table ${table.name}:`, error);
-                                            return {
-                                                id: table.id,
-                                                name: table.name,
-                                                description: table.description,
-                                                error: 'Failed to fetch schema'
-                                            };
-                                        }
-                                    })
-                                );
+                                actionResult = database.tables.map((table: any) => ({
+                                    id: table.id,
+                                    name: table.name,
+                                    description: table.description,
+                                    columns: table.attributes?.map((attr: Attribute) => ({
+                                        name: attr.name,
+                                        type: attr.data_type,
+                                        is_nullable: attr.is_nullable || false,
+                                        is_primary_key: attr.is_primary_key || false,
+                                        is_foreign_key: attr.is_foreign_key || false
+                                    })) || []
+                                }));
                             } catch (error) {
                                 console.error('Error fetching tables list:', error);
                                 actionResult = { error: 'Failed to fetch tables list' };
