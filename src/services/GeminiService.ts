@@ -48,33 +48,16 @@ class GeminiService {
         textContext?: string
     ): Promise<AIResponse> {
         try {
-            let payload: any = {
-                database,
-                apiKey: this.apiKey
-            };
-
             if (messageType === 'text') {
-                // Handle text message
-                payload = {
-                    ...payload,
+                // Send to our backend API controller
+                const response = await axios.post(`${this.baseUrl}/chat/chat`, {
                     message: content,
+                    apiKey: this.apiKey,
+                    database: database,
                     messageType: 'text'
-                };
+                });
 
-                const response = await axios.post(`${this.baseUrl}/gemini/chat`, payload);
-                const data = response.data;
-
-                // Use the action directly from the response if available
-                const action = data.action ? {
-                    type: data.action.Action,
-                    params: data.action.Params,
-                    sql: data.action.SQL
-                } : undefined;
-
-                return {
-                    ...data,
-                    action
-                };
+                return response.data;
             } else if (messageType === 'image' && Array.isArray(content)) {
                 // Handle multiple images
                 const base64Images = await Promise.all(
@@ -87,14 +70,11 @@ class GeminiService {
                     })
                 );
 
-                payload = {
-                    ...payload,
-                    messageType,
+                const response = await axios.post(`${this.baseUrl}/gemini/process-images`, {
                     images: base64Images,
-                    message: textContext || 'Please analyze these images.'
-                };
-
-                const response = await axios.post(`${this.baseUrl}/gemini/process-images`, payload);
+                    message: textContext || 'Please analyze these images.',
+                    apiKey: this.apiKey
+                });
                 return response.data;
             } else {
                 // Handle single file (voice/file/image)

@@ -42,6 +42,24 @@ export class AIAgentController {
                 return res.status(400).json({ error: 'API key is required' });
             }
 
+            // Validate database object
+            if (!database) {
+                console.log('Warning: No database provided');
+                return res.status(400).json({ error: 'Database information is required' });
+            }
+
+            if (!database.tables) {
+                console.log('Warning: Database has no tables');
+                return res.status(400).json({ error: 'Database has no tables' });
+            }
+
+            console.log('Database Info:', {
+                id: database.id,
+                name: database.name,
+                tableCount: database.tables.length,
+                tables: database.tables.map((t: any) => t.name)
+            });
+
             const genAI = new GoogleGenerativeAI(apiKey);
             
             const { response, stage } = await AIAgentController.processQuery(
@@ -55,10 +73,12 @@ export class AIAgentController {
             console.log('\nSending response to client');
             console.log('Current Stage:', stage);
             
+            // Return response in the format expected by the frontend
             res.json({ 
                 response,
                 success: true,
-                stage
+                stage,
+                action: previousActions.length > 0 ? previousActions[previousActions.length - 1].action : null
             });
 
             console.log('====== Chat Request Completed ======\n');
@@ -96,27 +116,30 @@ export class AIAgentController {
         const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
 
         // Build the prompt
-        const prompt = `You are an AI Agent for AskQL, specialized in helping users interact with databases. You can perform various database operations and provide insights. If user ask for SQL query, you should use GetTablesList Action first to get all the table and its columns, then give user SQL query to execute once you have retrieved the data which will displayed at LAST ACTION AND RESULT section.
+        const prompt = `You are an AI Agent for AskQL, specialized in helping users interact with databases. You can perform various database operations and provide insights. 
+
+IMPORTANT: For ANY database-related questions, ALWAYS use GetTablesList first to understand the database structure before providing any other response.
+
+WORKFLOW:
+1. For ANY question about tables, data, or SQL:
+   - FIRST use GetTablesList to get table information
+   - WAIT for the result in LAST ACTION AND RESULT
+   - THEN proceed with your response based on the actual table information
+
+2. For SQL queries:
+   - After GetTablesList, use ExecuteSQL with the correct table names
+   - Always include LIMIT 3 in SELECT queries
+   - Use exact table and column names from GetTablesList result
 
 GUIDELINES:
 1. RESPONSE FORMAT:
-   - ALWAYS reply with a JSON object, even for greetings or general responses
+   - ALWAYS reply with a JSON object
+   - NEVER skip GetTablesList for database questions
+   - Use exact table names from GetTablesList result
 
 2. SQL Queries:
    - SELECT: Execute directly, always include limit 3
    - CREATE/UPDATE/DELETE: Require user permission, explain impact
-
-4. Example Flow:
-   User: "Give me SQL to retrieve all the cars above 150 hp"
-   Response Chain:
-   1. GetTablesList action
-   2. Notice a typo in the user query (Mismatch between table name)
-   3. Respond action "Select * from car where hp > 150 limit 3"
-
-5. SQL Guidelines:
-   - SELECT: Execute directly, always include LIMIT 10
-   - CREATE/UPDATE/DELETE: Require user permission, explain impact
-   - Validate syntax and provide rollback plan for modification
 
 AVAILABLE ACTIONS:
 - GetDatabaseInfo: Get basic database information (name, description). No parameters needed.
@@ -137,20 +160,16 @@ AVAILABLE ACTIONS:
 - Respond: Communicate directly with the user.
   Example: {"Action": "Respond", "Result": "I found 2 tables in your database: Car and Covid"}
 
-ACTION USAGE EXAMPLES:
-1. Greeting:
-   {"Action": "Respond", "Result": "Hi! I can help you explore your database. What would you like to know?"}
+EXAMPLE FLOWS:
+1. User asks: "What tables do I have?"
+   Step 1: {"Action": "GetTablesList"}
+   Step 2: Wait for result
+   Step 3: {"Action": "Respond", "Result": "You have the following tables: [list from result]"}
 
-2. After getting tables:
-   {"Action": "Respond", "Result": "I found these tables: Car and Covid. Would you like to explore their structure?"}
-
-3. After error:
-   {"Action": "Respond", "Result": "I couldn't execute that query. Could you please rephrase it?"}
-
-SQL EXECUTION PERMISSIONS:
-- SELECT statements can be executed directly without user permission
-- CREATE, UPDATE, DELETE, DROP, ALTER, and other data modification statements require explicit user permission
-- When encountering a data modification request, explain the operation and ask for user confirmation before proceeding
+2. User asks: "Show cars with horsepower > 150"
+   Step 1: {"Action": "GetTablesList"}
+   Step 2: Check result for correct table name and columns
+   Step 3: {"Action": "ExecuteSQL", "SQL": "SELECT * FROM Car WHERE horsepower > 150 LIMIT 3"}
 
 RECENT CONVERSATION:
 ${conversationHistory.length > 0 ? conversationHistory.join('\n') : 'No conversation history.'}
@@ -167,7 +186,9 @@ LAST ACTION AND RESULT:
 ${previousActions.length > 0 ? `Last Action: ${previousActions[previousActions.length - 1].action.Action}
 Result: ${JSON.stringify(previousActions[previousActions.length - 1].result, null, 2)}` : 'No previous actions.'}
 
-USER QUERY: ${query}`;
+USER QUERY: ${query}
+
+Remember: ALWAYS use GetTablesList first for ANY database-related questions!`;
 
         console.log('Prompt:', prompt);
 
