@@ -10,19 +10,13 @@ import ChatService from '../services/ChatService';
 import type { ChatMessage as DBChatMessage, ChatSession } from '../services/ChatService';
 import type { MessageType } from '../services/GeminiService';
 
-// Update type definitions
+// Add/update type definitions at the top of the file
 type ExtendedMessageType = 'text' | 'image' | 'file' | 'voice' | 'combined';
-
-type AnalysisStage = 'intent' | 'planning' | 'processing';
-
-interface QueryType {
-    type: string;
-    explanation: string;
-}
 
 interface AIResponse {
     response: string;
-    queryType?: QueryType;
+    success: boolean;
+    stage: string;
 }
 
 interface ChatMessage {
@@ -33,12 +27,24 @@ interface ChatMessage {
     type?: ExtendedMessageType;
     fileUrl?: string;
     fileName?: string;
-    queryType?: QueryType;
+    stage?: string;
     attachments?: Array<{
         type: string;
         url: string;
         fileName: string;
     }>;
+}
+
+interface ChatMessageDB {
+    id?: string;
+    session_id: string;
+    sender: 'user' | 'bot';
+    content: string;
+    message_type: string;
+    stage?: string;
+    sql_query?: string;
+    file_url?: string;
+    file_name?: string;
 }
 
 interface Attachment {
@@ -176,7 +182,6 @@ const ThinkingProcess: React.FC<{ actions: Action[]; currentActionIndex: number 
     );
 };
 
-// Add this component after the ThinkingProcess component
 const IntentAnalysisLoader: React.FC<{ currentStage: string }> = ({ currentStage }) => {
     const [dots, setDots] = useState('');
 
@@ -187,33 +192,106 @@ const IntentAnalysisLoader: React.FC<{ currentStage: string }> = ({ currentStage
         return () => clearInterval(interval);
     }, []);
 
+    // Log the current stage for debugging
+    useEffect(() => {
+        console.log('Current Stage in Loader:', currentStage);
+    }, [currentStage]);
+
     const stages = {
-        'intent': 'Analyzing intent',
-        'planning': 'Planning response',
-        'processing': 'Processing request',
+        'GetDatabaseInfo': {
+            title: 'Getting Database Information',
+            description: 'Retrieving basic database information (name, description)',
+            color: 'blue'
+        },
+        'GetTablesList': {
+            title: 'Fetching Tables List',
+            description: 'Getting list of all tables in the database',
+            color: 'indigo'
+        },
+        'GetTableSchema': {
+            title: 'Reading Table Schema',
+            description: 'Getting detailed schema for the specified table',
+            color: 'purple'
+        },
+        'ExecuteSQL': {
+            title: 'Executing SQL Query',
+            description: 'Running SQL query and processing results',
+            color: 'green'
+        },
+        'Remember': {
+            title: 'Storing Information',
+            description: 'Saving important information for future reference',
+            color: 'yellow'
+        },
+        'Respond': {
+            title: 'Responding',
+            description: 'Preparing response based on the information',
+            color: 'orange'
+        }
     };
 
+    // Ensure we're using the correct stage key
+    const normalizedStage = currentStage.includes('Get') ? currentStage : 
+                          currentStage.toLowerCase() === 'processing' ? 'processing' :
+                          Object.keys(stages).find(key => key.toLowerCase() === currentStage.toLowerCase()) || 'processing';
+
+    const currentStageInfo = stages[normalizedStage as keyof typeof stages] || stages['processing'];
+
     return (
-        <div className="flex flex-col space-y-2 p-3 bg-white rounded-[18px] rounded-bl-[4px] shadow-sm max-w-[85%]">
+        <div className="flex flex-col space-y-2 p-4 bg-white rounded-[18px] rounded-bl-[4px] shadow-sm max-w-[85%]">
             <div className="flex items-center space-x-3">
                 <div className="flex space-x-1">
-                    <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse" />
-                    <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse delay-100" />
-                    <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse delay-200" />
+                    <div className={`w-2 h-2 bg-${currentStageInfo.color}-500 rounded-full animate-pulse`} />
+                    <div className={`w-2 h-2 bg-${currentStageInfo.color}-500 rounded-full animate-pulse delay-100`} />
+                    <div className={`w-2 h-2 bg-${currentStageInfo.color}-500 rounded-full animate-pulse delay-200`} />
                 </div>
-                <div className="text-sm text-gray-600">
-                    {stages[currentStage as keyof typeof stages]}{dots}
+                <div className="flex flex-col">
+                    <span className={`text-sm font-medium text-${currentStageInfo.color}-600`}>
+                        {currentStageInfo.title}{dots}
+                    </span>
+                    <span className="text-xs text-gray-500">
+                        {currentStageInfo.description}
+                    </span>
                 </div>
             </div>
             <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
                 <div 
-                    className="h-full bg-blue-500 rounded-full transition-all duration-300"
-                    style={{ 
-                        width: currentStage === 'intent' ? '33%' : 
-                               currentStage === 'planning' ? '66%' : '100%' 
-                    }}
+                    className={`h-full bg-${currentStageInfo.color}-500 rounded-full transition-all duration-300`}
+                    style={{ width: '100%' }}
                 />
             </div>
+        </div>
+    );
+};
+
+const ActionDisplay: React.FC<{ action: string; params?: any; sql?: string }> = ({ action, params, sql }) => {
+    const actionDescriptions = {
+        'GetDatabaseInfo': 'Getting basic database information (name, description)',
+        'GetTablesList': 'Getting list of all tables in the database',
+        'GetTableSchema': 'Getting detailed schema for specific table',
+        'ExecuteSQL': 'Executing SQL query',
+        'Remember': 'Storing important information',
+        'Respond': 'Communicating with user'
+    };
+
+    return (
+        <div className="bg-gray-50 rounded-lg p-3 mb-2 text-sm">
+            <div className="flex items-center space-x-2">
+                <span className="font-medium text-indigo-600">Action:</span>
+                <span>{actionDescriptions[action as keyof typeof actionDescriptions] || action}</span>
+            </div>
+            {params && (
+                <div className="mt-1">
+                    <span className="font-medium text-gray-600">Parameters: </span>
+                    <code className="bg-gray-100 px-1 rounded">{JSON.stringify(params)}</code>
+                </div>
+            )}
+            {sql && (
+                <div className="mt-1">
+                    <span className="font-medium text-gray-600">SQL: </span>
+                    <code className="bg-gray-100 px-1 rounded">{sql}</code>
+                </div>
+            )}
         </div>
     );
 };
@@ -333,7 +411,8 @@ const AIChatBot: React.FC<AIChatBotProps> = ({ apiKey, database }) => {
                     type: msg.message_type,
                     fileUrl: msg.file_url,
                     fileName: msg.file_name,
-                    attachments: attachments
+                    attachments: attachments,
+                    stage: msg.stage // Load stage from DB
                 };
             });
             setCurrentSessionId(sessionId);
@@ -433,7 +512,8 @@ const AIChatBot: React.FC<AIChatBotProps> = ({ apiKey, database }) => {
 
         setError(null);
         setIsAnalyzing(true);
-        setAnalysisStage('intent');
+        // Start with GetDatabaseInfo since we're initiating a new request
+        setAnalysisStage('GetDatabaseInfo');
 
         try {
             // First, upload all attachments
@@ -560,117 +640,38 @@ const AIChatBot: React.FC<AIChatBotProps> = ({ apiKey, database }) => {
                 attachments: messageContent.attachments
             }]);
 
-            setAnalysisStage('planning');
-            await new Promise(resolve => setTimeout(resolve, 1000)); // Add slight delay for UX
+            // Text only
+            const aiResponse = await geminiService.current.sendMessage(
+                inputMessage.trim(),
+                database,
+                'text'
+            );
 
-            // If no images or single image, process with regular chat
-            if (imageAttachments.length <= 1) {
-                setAnalysisStage('processing');
-                if (pendingAttachments.some(a => a.type === 'voice')) {
-                    setThinkingType('VOICE_PROCESSING');
-                    // Handle voice messages
-                    const voiceAttachment = pendingAttachments.find(a => a.type === 'voice');
-                    if (voiceAttachment) {
-                        const formData = new FormData();
-                        formData.append('audio', voiceAttachment.file);
-                        formData.append('apiKey', apiKey);
-                        
-                        const response = await fetch('/api/gemini/transcribe-voice', {
-                            method: 'POST',
-                            body: formData,
-                        });
-                        
-                        if (!response.ok) {
-                            throw new Error('Failed to process voice message');
-                        }
-                        
-                        const data = await response.json();
-                        const aiResponse = data.transcription || 'No transcription available';
+            console.log('AI Response:', aiResponse);
 
-                        // Save the AI response
-                        await ChatService.addMessage({
-                            session_id: currentSessionId!,
-                            sender: 'bot',
-                            content: aiResponse,
-                            message_type: 'text'
-                        });
-
-                        setMessages(prev => [...prev, {
-                            sender: 'bot',
-                            content: aiResponse,
-                            timestamp: new Date(),
-                            type: 'text'
-                        }]);
-                    }
-                } else if (pendingAttachments.length > 0 && !imageAttachments.length) {
-                    setThinkingType('FILE_PROCESSING');
-                    // For other types of attachments
-                    const firstAttachment = pendingAttachments[0];
-                    const aiResponse = firstAttachment.aiResponse || 'No response available';
-
-                    // Save the AI response
-                    await ChatService.addMessage({
-                        session_id: currentSessionId!,
-                        sender: 'bot',
-                        content: aiResponse,
-                        message_type: 'text'
-                    });
-
-                    setMessages(prev => [...prev, {
-                        sender: 'bot',
-                        content: aiResponse,
-                        timestamp: new Date(),
-                        type: 'text'
-                    }]);
-                } else if (imageAttachments.length === 1) {
-                    setThinkingType('IMAGE_ANALYSIS');
-                    // Single image was already processed above
-                    const aiResponse = imageAttachments[0].aiResponse || 'No image analysis available';
-
-                    // Save the AI response
-                    await ChatService.addMessage({
-                        session_id: currentSessionId!,
-                        sender: 'bot',
-                        content: aiResponse,
-                        message_type: 'text'
-                    });
-
-                    setMessages(prev => [...prev, {
-                        sender: 'bot',
-                        content: aiResponse,
-                        timestamp: new Date(),
-                        type: 'text'
-                    }]);
-                } else {
-                    // Text only
-                    const aiResponse = await geminiService.current.sendMessage(
-                        inputMessage.trim(),
-                        database,
-                        'text'
-                    );
-
-                    if (aiResponse.queryType) {
-                        setThinkingType(aiResponse.queryType.type);
-                    }
-
-                    // Save the AI response
-                    await ChatService.addMessage({
-                        session_id: currentSessionId!,
-                        sender: 'bot',
-                        content: aiResponse.response,
-                        message_type: 'text',
-                        query_type: JSON.stringify(aiResponse.queryType)
-                    });
-
-                    setMessages(prev => [...prev, {
-                        sender: 'bot',
-                        content: aiResponse.response,
-                        timestamp: new Date(),
-                        type: 'text',
-                        queryType: aiResponse.queryType
-                    }]);
-                }
+            // Only update stage if we get a valid stage from the response
+            if (aiResponse.stage && aiResponse.stage !== 'processing' && aiResponse.stage !== 'planning') {
+                console.log('Setting stage to:', aiResponse.stage);
+                setAnalysisStage(aiResponse.stage);
+                await new Promise(resolve => setTimeout(resolve, 1000));
             }
+
+            // Save the AI response
+            await ChatService.addMessage({
+                session_id: currentSessionId!,
+                sender: 'bot',
+                content: aiResponse.response,
+                message_type: 'text',
+                stage: aiResponse.stage
+            });
+
+            setMessages(prev => [...prev, {
+                sender: 'bot',
+                content: aiResponse.response,
+                timestamp: new Date(),
+                type: 'text',
+                stage: aiResponse.stage
+            }]);
 
             // Clear input and attachments
             setInputMessage('');
@@ -1019,93 +1020,42 @@ const AIChatBot: React.FC<AIChatBotProps> = ({ apiKey, database }) => {
                                                 ? 'bg-indigo-600 text-white rounded-br-[4px]'
                                                 : 'bg-white text-gray-800 rounded-bl-[4px] shadow-sm'
                                         }`}>
-                                            {message.type === 'combined' ? (
-                                                <>
-                                                    {message.content && (
-                                                        <div className="mb-2">{message.content}</div>
-                                                    )}
-                                                    {message.queryType && (
-                                                        <div className="text-xs text-gray-500 mb-1">
-                                                            Query Type: {message.queryType.type}
-                                                        </div>
-                                                    )}
-                                                    {message.attachments && message.attachments.length > 0 && (
-                                                        <div className="flex flex-wrap gap-2">
-                                                            {message.attachments.map((attachment, i) => (
-                                                                <div key={i} className="relative">
-                                                                    {attachment.type === 'image' ? (
-                                                                        <img 
-                                                                            src={attachment.url} 
-                                                                            alt={attachment.fileName}
-                                                                            className="max-w-[200px] rounded-lg cursor-pointer"
-                                                                            onClick={() => openImageModal(attachment.url)}
-                                                                        />
-                                                                    ) : attachment.type === 'voice' ? (
-                                                                        <audio 
-                                                                            src={attachment.url} 
-                                                                            controls 
-                                                                            className="max-w-full mb-2"
-                                                                        />
-                                                                    ) : (
-                                                                        <div className="flex items-center space-x-2 mb-2">
-                                                                            <FaPaperclip />
-                                                                            <a 
-                                                                                href={attachment.url}
-                                                                                download={attachment.fileName}
-                                                                                className="underline"
-                                                                            >
-                                                                                {attachment.fileName}
-                                                                            </a>
-                                                                        </div>
-                                                                    )}
-                                                                </div>
-                                                            ))}
-                                                        </div>
-                                                    )}
-                                                </>
-                                            ) : (
-                                                <div className={`prose ${message.sender === 'user' ? 'prose-invert' : ''} max-w-none`}>
-                                                    {message.queryType && (
-                                                        <div className="text-xs text-gray-500 mb-1">
-                                                            Intent: {message.queryType.type}
-                                                        </div>
-                                                    )}
-                                                    <ReactMarkdown
-                                                        components={{
-                                                            code: ({children, className}) => {
-                                                                if (className === 'language-sql' || message.sql) {
-                                                                    return (
-                                                                        <div className="relative">
-                                                                            <pre className={markdownStyles.pre}>
-                                                                                <code className={className}>
-                                                                                    {children}
-                                                                                </code>
-                                                                                <button
-                                                                                    onClick={() => handleExecuteQuery(message.sql || String(children))}
-                                                                                    className="absolute top-2 right-2 bg-green-500 hover:bg-green-600 text-white p-2 rounded"
-                                                                                    title="Run Query"
-                                                                                >
-                                                                                    Run Query
-                                                                                </button>
-                                                                            </pre>
-                                                                        </div>
-                                                                    );
-                                                                }
+                                            <div className={`prose ${message.sender === 'user' ? 'prose-invert' : ''} max-w-none`}>
+                                                <ReactMarkdown
+                                                    components={{
+                                                        code: ({children, className}) => {
+                                                            if (className === 'language-sql' || message.sql) {
                                                                 return (
-                                                                    <code className={markdownStyles.code}>
-                                                                        {children}
-                                                                    </code>
+                                                                    <div className="relative">
+                                                                        <pre className={markdownStyles.pre}>
+                                                                            <code className={className}>
+                                                                                {children}
+                                                                            </code>
+                                                                            <button
+                                                                                onClick={() => handleExecuteQuery(message.sql || String(children))}
+                                                                                className="absolute top-2 right-2 bg-green-500 hover:bg-green-600 text-white p-2 rounded"
+                                                                                title="Run Query"
+                                                                            >
+                                                                                Run Query
+                                                                            </button>
+                                                                        </pre>
+                                                                    </div>
                                                                 );
-                                                            },
-                                                            pre: ({children}) => (
-                                                                <pre className={markdownStyles.pre}>{children}</pre>
-                                                            ),
-                                                        }}
-                                                    >
-                                                        {message.content}
-                                                    </ReactMarkdown>
-                                                </div>
-                                            )}
+                                                            }
+                                                            return (
+                                                                <code className={markdownStyles.code}>
+                                                                    {children}
+                                                                </code>
+                                                            );
+                                                        },
+                                                        pre: ({children}) => (
+                                                            <pre className={markdownStyles.pre}>{children}</pre>
+                                                        ),
+                                                    }}
+                                                >
+                                                    {message.content}
+                                                </ReactMarkdown>
+                                            </div>
                                             <p className="text-xs mt-1 opacity-70">
                                                 {message.timestamp.toLocaleTimeString()}
                                             </p>

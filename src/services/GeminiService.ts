@@ -3,13 +3,18 @@ import axios from 'axios';
 export type MessageType = 'text' | 'image' | 'file' | 'voice' | 'combined';
 
 export interface QueryType {
-    type: string;
+    type: 'GetDatabaseInfo' | 'GetTablesList' | 'GetTableSchema' | 'ExecuteSQL' | 'Remember' | 'Summarize';
     explanation: string;
 }
 
 export interface AIResponse {
     response: string;
     queryType?: QueryType;
+    action?: {
+        type: QueryType['type'];
+        params?: Record<string, any>;
+        sql?: string;
+    };
 }
 
 class GeminiService {
@@ -48,7 +53,29 @@ class GeminiService {
                 apiKey: this.apiKey
             };
 
-            if (messageType === 'image' && Array.isArray(content)) {
+            if (messageType === 'text') {
+                // Handle text message
+                payload = {
+                    ...payload,
+                    message: content,
+                    messageType: 'text'
+                };
+
+                const response = await axios.post(`${this.baseUrl}/gemini/chat`, payload);
+                const data = response.data;
+
+                // Use the action directly from the response if available
+                const action = data.action ? {
+                    type: data.action.Action,
+                    params: data.action.Params,
+                    sql: data.action.SQL
+                } : undefined;
+
+                return {
+                    ...data,
+                    action
+                };
+            } else if (messageType === 'image' && Array.isArray(content)) {
                 // Handle multiple images
                 const base64Images = await Promise.all(
                     content.map(async (file) => {
@@ -69,10 +96,10 @@ class GeminiService {
 
                 const response = await axios.post(`${this.baseUrl}/gemini/process-images`, payload);
                 return response.data;
-            } else if (content instanceof File) {
-                // Handle single file (voice/file)
+            } else {
+                // Handle single file (voice/file/image)
                 const formData = new FormData();
-                formData.append(messageType, content);
+                formData.append(messageType, content as File);
                 formData.append('apiKey', this.apiKey);
                 if (textContext) {
                     formData.append('message', textContext);
@@ -89,6 +116,8 @@ class GeminiService {
                     case 'image':
                         endpoint = 'process-image';
                         break;
+                    default:
+                        throw new Error(`Unsupported message type: ${messageType}`);
                 }
 
                 const response = await axios.post(`${this.baseUrl}/gemini/${endpoint}`, formData, {
@@ -100,16 +129,6 @@ class GeminiService {
                 return {
                     response: messageType === 'voice' ? response.data.transcription : response.data.content
                 };
-            } else {
-                // Handle text message
-                payload = {
-                    ...payload,
-                    message: content,
-                    messageType: 'text'
-                };
-
-                const response = await axios.post(`${this.baseUrl}/gemini/chat`, payload);
-                return response.data;
             }
         } catch (error) {
             console.error('Error in sendMessage:', error);

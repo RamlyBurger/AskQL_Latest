@@ -19,17 +19,11 @@ interface ActionResult {
 export class AIAgentController {
     private static readonly AVAILABLE_ACTIONS = {
         GetDatabaseInfo: "Get basic database information (name, description). No parameters needed.",
-        GetTablesList: "Get list of all tables in the database. No parameters needed.",
+        GetTablesList: "Get list of all tables with their complete schema (columns, types, constraints). No parameters needed.",
         GetTableSchema: "Get detailed schema for a specific table. Required params: { tableName: 'name_of_table' }",
-        ExecuteSQL: "Execute a SQL query. Required: SQL field with the query. Example: { SQL: 'SELECT * FROM table LIMIT 10' }",
+        ExecuteSQL: "Execute a SQL query. Required: SQL field with the query. Example: { SQL: 'SELECT * FROM table limit 3' }",
         Remember: "Store important information from the previous action's result. Required params: { key: 'what_to_remember', value: 'the_value' }",
-        Summarize: "End the conversation and provide final summary."
-        // Future actions (not implemented yet):
-        // AnalyzeData: "Analyze data patterns and provide insights"
-        // ExplainQuery: "Explain a SQL query in natural language"
-        // SuggestOptimization: "Suggest optimizations for database or queries"
-        // ValidateQuery: "Validate a SQL query before execution"
-        // GenerateERD: "Generate Entity Relationship Diagram description"
+        Respond: "Communicate directly with the user."
     };
 
     static async chat(req: Request, res: Response) {
@@ -50,7 +44,7 @@ export class AIAgentController {
 
             const genAI = new GoogleGenerativeAI(apiKey);
             
-            const response = await AIAgentController.processQuery(
+            const { response, stage } = await AIAgentController.processQuery(
                 genAI,
                 message,
                 database,
@@ -59,12 +53,15 @@ export class AIAgentController {
             );
 
             console.log('\nSending response to client');
-            console.log('====== Chat Request Completed ======\n');
+            console.log('Current Stage:', stage);
             
             res.json({ 
                 response,
-                success: true
+                success: true,
+                stage
             });
+
+            console.log('====== Chat Request Completed ======\n');
         } catch (error) {
             console.error('\nError in chat:', error);
             console.log('====== Chat Request Failed ======\n');
@@ -77,94 +74,100 @@ export class AIAgentController {
         query: string,
         database: any,
         conversationHistory: Array<{ sender: string; content: string }> = [],
-        previousActions: ActionResult[] = []
-    ): Promise<string> {
+        previousActions: ActionResult[] = [],
+        loopCount: number = 0
+    ): Promise<{ response: string; stage: string }> {
         console.log('\n=== Processing Query ===');
         console.log('User Query:', query);
         console.log('Database:', database);
+        console.log('Loop Count:', loopCount);
+
+        // Prevent infinite loops by limiting to 10 iterations
+        if (loopCount >= 10) {
+            console.log('Reached maximum number of action loops (10), stopping...');
+            return {
+                response: previousActions.length > 0 
+                    ? `Based on the actions taken: ${previousActions.map(a => a.action.Action).join(' → ')}`
+                    : 'Reached maximum number of actions without a clear result. Please try a more specific query.',
+                stage: 'Respond'
+            };
+        }
 
         const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
 
         // Build the prompt
-        const prompt = `You are an AI Agent for AskQL, specialized in helping users interact with databases. You can perform various database operations and provide insights. 
+        const prompt = `You are an AI Agent for AskQL, specialized in helping users interact with databases. You can perform various database operations and provide insights. If user ask for SQL query, you should use GetTablesList Action first to get all the table and its columns, then give user SQL query to execute once you have retrieved the data which will displayed at LAST ACTION AND RESULT section.
+
+GUIDELINES:
+1. RESPONSE FORMAT:
+   - ALWAYS reply with a JSON object, even for greetings or general responses
+
+2. SQL Queries:
+   - SELECT: Execute directly, always include limit 3
+   - CREATE/UPDATE/DELETE: Require user permission, explain impact
+
+4. Example Flow:
+   User: "Give me SQL to retrieve all the cars above 150 hp"
+   Response Chain:
+   1. GetTablesList action
+   2. Notice a typo in the user query (Mismatch between table name)
+   3. Respond action "Select * from car where hp > 150 limit 3"
+
+5. SQL Guidelines:
+   - SELECT: Execute directly, always include LIMIT 10
+   - CREATE/UPDATE/DELETE: Require user permission, explain impact
+   - Validate syntax and provide rollback plan for modification
 
 AVAILABLE ACTIONS:
 - GetDatabaseInfo: Get basic database information (name, description). No parameters needed.
-- GetTablesList: Get list of all tables in the database. No parameters needed.
-- GetTableSchema: Get detailed schema for a specific table. Required params: { tableName: 'name_of_table' }
-- ExecuteSQL: Execute a SQL query. Required: SQL field with the query. Example: { SQL: 'SELECT * FROM table LIMIT 10' }
-- Remember: Store important information from the previous action's result. Required params: { key: 'what_to_remember', value: 'the_value' }
-- Summarize: End the conversation and provide final summary.
+  Example: {"Action": "GetDatabaseInfo"}
 
-To perform any action, respond with a JSON object that includes:
-{
-    "Action": "ActionName",
-    "Params": {optional parameters based on action requirements},
-    "SQL": "SQL query if using ExecuteSQL action",
-    "Result": "Any additional information or context"
-}
+- GetTablesList: Get list of all tables with their complete schema (columns, types, constraints). No parameters needed.
+  Example: {"Action": "GetTablesList"}
+
+- GetTableSchema: Get detailed schema for a specific table. Required params: { tableName: 'name_of_table' }
+  Example: {"Action": "GetTableSchema", "Params": {"tableName": "users"}}
+
+- ExecuteSQL: Execute a SQL query. Required: SQL field with the query.
+  Example: {"Action": "ExecuteSQL", "SQL": "SELECT * FROM users limit 3"}
+
+- Remember: Store important information from the previous action's result.
+  Example: {"Action": "Remember", "Params": {"key": "table_count", "value": "Found 2 tables"}}
+
+- Respond: Communicate directly with the user.
+  Example: {"Action": "Respond", "Result": "I found 2 tables in your database: Car and Covid"}
 
 ACTION USAGE EXAMPLES:
-1. Get database structure:
-   {"Action": "GetDatabaseInfo"}
+1. Greeting:
+   {"Action": "Respond", "Result": "Hi! I can help you explore your database. What would you like to know?"}
 
-2. List all tables:
-   {"Action": "GetTablesList"}
+2. After getting tables:
+   {"Action": "Respond", "Result": "I found these tables: Car and Covid. Would you like to explore their structure?"}
 
-3. Get table schema:
-   {"Action": "GetTableSchema", "Params": {"tableName": "Users"}}
+3. After error:
+   {"Action": "Respond", "Result": "I couldn't execute that query. Could you please rephrase it?"}
 
-4. Execute SQL query:
-   {"Action": "ExecuteSQL", "SQL": "SELECT COUNT(*) FROM Users LIMIT 10"}
-
-5. Count table records:
-   {"Action": "CountRecords", "Params": {"tableName": "Users"}}
-
-6. Remember important info:
-   {"Action": "Remember", "Params": {"key": "tables", "value": "Available tables: Users, Products"}}
-
-7. End conversation:
-   {"Action": "Summarize", "Result": "Found 1000 users in the database"}
+SQL EXECUTION PERMISSIONS:
+- SELECT statements can be executed directly without user permission
+- CREATE, UPDATE, DELETE, DROP, ALTER, and other data modification statements require explicit user permission
+- When encountering a data modification request, explain the operation and ask for user confirmation before proceeding
 
 RECENT CONVERSATION:
 ${conversationHistory.length > 0 ? conversationHistory.join('\n') : 'No conversation history.'}
+
+REMEMBERED INFORMATION:
+${previousActions.some(action => action.action.Action === 'Remember') ? 
+  previousActions
+    .filter(action => action.action.Action === 'Remember')
+    .map(action => `${action.action.Params?.key}: ${action.action.Params?.value}`)
+    .join('\n') 
+  : 'No remembered information.'}
 
 LAST ACTION AND RESULT:
 ${previousActions.length > 0 ? `Last Action: ${previousActions[previousActions.length - 1].action.Action}
 Result: ${JSON.stringify(previousActions[previousActions.length - 1].result, null, 2)}` : 'No previous actions.'}
 
-USER QUERY: ${query}
-
-DECISION MAKING GUIDELINES:
-1. First, check if you already have the information you need:
-   - Look at the last action's result
-   - If it has what you need, use Remember to store it
-   - Don't repeat actions unnecessarily
-2. Choose appropriate actions to gather new information
-3. After each action that returns useful information:
-   - Use Remember to store it for future use
-   - Then decide what to do next
-4. Always end with Summarize action to:
-   - Explain what was done
-   - Show results
-   - Provide recommendations
-   - Highlight any concerns
-
-Remember:
-1. ALWAYS use Remember action to store important information from action results
-2. Check previous action results before making redundant calls
-3. For destructive operations (DROP, DELETE, etc.):
-   - Validate the request
-   - Check dependencies
-   - Warn about consequences
-4. For data analysis:
-   - Start with count/sample queries
-   - Refine based on results
-   - Always respect 10-row limit
-5. Chain multiple actions when needed
-6. Always validate SQL queries
-${!database ? '\n7. Note: No database is currently selected.' : ''}
-`;
+USER QUERY: ${query}`;
 
         console.log('Prompt:', prompt);
 
@@ -245,12 +248,12 @@ ${!database ? '\n7. Note: No database is currently selected.' : ''}
                         const sql = action.SQL.toLowerCase();
                         if (sql.includes('select')) {
                             if (!sql.includes('limit')) {
-                                action.SQL = `${action.SQL} LIMIT 10`;
+                                action.SQL = `${action.SQL} limit 3`;
                                 console.log('Added missing LIMIT clause');
                             } else {
                                 const limitMatch = sql.match(/limit\s+(\d+)/i);
                                 if (limitMatch && parseInt(limitMatch[1]) > 10) {
-                                    action.SQL = action.SQL.replace(/limit\s+\d+/i, 'LIMIT 10');
+                                    action.SQL = action.SQL.replace(/limit\s+\d+/i, 'limit 3');
                                     console.log('Adjusted LIMIT to maximum allowed (10)');
                                 }
                             }
@@ -271,13 +274,45 @@ ${!database ? '\n7. Note: No database is currently selected.' : ''}
                             break;
 
                         case 'GetTablesList':
-                            actionResult = database?.tables ? 
-                                database.tables.map((t: any) => ({ 
-                                    id: t.id, 
-                                    name: t.name, 
-                                    description: t.description 
-                                })) : 
-                                { error: 'No tables found' };
+                            if (!database?.tables) {
+                                actionResult = { error: 'No tables found' };
+                                break;
+                            }
+
+                            try {
+                                // Get schema for all tables
+                                actionResult = await Promise.all(
+                                    database.tables.map(async (table: any) => {
+                                        try {
+                                            const tableData = await DatabaseService.getTableData(table.id, 1, 1);
+                                            return {
+                                                id: table.id,
+                                                name: table.name,
+                                                description: table.description,
+                                                columns: Object.entries(tableData.columnTypes).map(([name, type]) => ({
+                                                    name,
+                                                    type,
+                                                    description: table.attributes?.find((attr: Attribute) => attr.name === name)?.description || '',
+                                                    is_nullable: table.attributes?.find((attr: Attribute) => attr.name === name)?.is_nullable || false,
+                                                    is_primary_key: table.attributes?.find((attr: Attribute) => attr.name === name)?.is_primary_key || false,
+                                                    is_foreign_key: table.attributes?.find((attr: Attribute) => attr.name === name)?.is_foreign_key || false
+                                                }))
+                                            };
+                                        } catch (error) {
+                                            console.error(`Error fetching schema for table ${table.name}:`, error);
+                                            return {
+                                                id: table.id,
+                                                name: table.name,
+                                                description: table.description,
+                                                error: 'Failed to fetch schema'
+                                            };
+                                        }
+                                    })
+                                );
+                            } catch (error) {
+                                console.error('Error fetching tables list:', error);
+                                actionResult = { error: 'Failed to fetch tables list' };
+                            }
                             break;
 
                         case 'GetTableSchema':
@@ -324,8 +359,8 @@ ${!database ? '\n7. Note: No database is currently selected.' : ''}
                             };
                             break;
 
-                        case 'Summarize':
-                            // No additional processing needed for Summarize
+                        case 'Respond':
+                            // No additional processing needed for Respond
                             actionResult = { message: 'Conversation ended' };
                             break;
 
@@ -383,45 +418,55 @@ ${!database ? '\n7. Note: No database is currently selected.' : ''}
                         formattedResponse += `[SQL Query]\n\`\`\`sql\n${currentAction.SQL}\n\`\`\`\n\n`;
                     }
 
-                    // If this is not a Summarize action, continue with next action
-                    if (currentAction.Action !== 'Summarize') {
+                    // If this is not a Respond action, continue with next action
+                    if (currentAction.Action !== 'Respond') {
                         return await AIAgentController.processQuery(
                             genAI,
                             query,
                             database,
                             conversationHistory,
-                            previousActions
+                            previousActions,
+                            loopCount + 1
                         );
                     }
 
-                    // For Summarize action, use the Result field as the response
+                    // For Respond action, use the Result field as the response
                     if (currentAction.Result) {
-                        formattedResponse = currentAction.Result;
-                    } else {
-                        // Fallback to a default response if no Result field
-                        formattedResponse = `I'm your database assistant. ${!database ? 
-                            "I notice there's no database selected yet. Would you like me to help you work with a database?" : 
-                            "How can I help you with your database today?"}`;
+                        return {
+                            response: currentAction.Result,
+                            stage: currentAction.Action
+                        };
                     }
 
-                    console.log('Formatted Response:', formattedResponse);
-                    console.log('Action:', currentAction.Action);
-                    console.log('=== Query Processing Complete ===\n');
+                    // Fallback response
+                    return {
+                        response: `I'm your database assistant. ${!database ? 
+                            "I notice there's no database selected yet. Would you like me to help you work with a database?" : 
+                            "How can I help you with your database today?"}`,
+                        stage: 'Respond'
+                    };
 
-                    return formattedResponse;
                 } catch (e) {
                     console.error('Failed to parse action:', e);
                     console.error('JSON text was:', jsonText);
+                    return {
+                        response: 'I encountered an error processing your request. Could you please rephrase it?',
+                        stage: 'Respond'
+                    };
                 }
             }
 
-            // If no valid action found, create a default response for general conversation
-            return `I'm your database assistant. ${!database ? 
-                "I notice there's no database selected yet. Would you like me to help you work with a database?" : 
-                "How can I help you with your database today?"}`;
+            // If no valid action found, return default response
+            return {
+                response: `I'm your database assistant. ${!database ? 
+                    "I notice there's no database selected yet. Would you like me to help you work with a database?" : 
+                    "How can I help you with your database today?"}`,
+                stage: 'Respond'
+            };
+
         } catch (error) {
             console.error('Error processing query:', error);
-            throw new Error('Failed to process query');
+            throw error;
         }
     }
 } 

@@ -4,6 +4,11 @@ import { fileTypeFromBuffer } from 'file-type';
 import * as fs from 'fs';
 import * as path from 'path';
 
+interface ChatMessage {
+    role: 'user' | 'assistant';
+    parts: Array<{ text: string } | { inlineData: { data: string; mimeType: string } }>;
+}
+
 export class GeminiController {
     static async detectColumnTypes(req: Request, res: Response) {
         try {
@@ -103,93 +108,94 @@ Respond in the following JSON format:
 
     static async processImage(req: Request, res: Response) {
         try {
-            if (!req.file) {
-                return res.status(400).json({ error: 'No image file provided' });
-            }
-
             const { apiKey, message } = req.body;
+            const image = req.file;
+
             if (!apiKey) {
                 return res.status(400).json({ error: 'API key is required' });
             }
 
+            if (!image) {
+                return res.status(400).json({ error: 'Image file is required' });
+            }
+
+            // Convert image to base64
+            const imageBase64 = image.buffer.toString('base64');
+            const mimeType = image.mimetype;
+
             const genAI = new GoogleGenerativeAI(apiKey);
-            const imageBuffer = await fs.promises.readFile(req.file.path);
-            const mimeType = (await fileTypeFromBuffer(imageBuffer))?.mime || 'image/jpeg';
-            const base64Image = imageBuffer.toString('base64');
-
-            // Create parts array with text prompt and image
-            const parts = [
-                { text: message || "Please analyze this image and describe what you see in detail." },
-                {
-                    inlineData: {
-                        data: base64Image,
-                        mimeType: mimeType
-                    }
-                }
-            ];
-
-            // Use the vision model
             const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
-            const result = await model.generateContent(parts);
-            const response = await result.response;
-            
-            // Clean up the temporary file
-            await fs.promises.unlink(req.file.path);
 
-            res.json({ description: response.text() });
+            // Create prompt with base64 image data
+            const prompt = `Here is a base64 encoded image (${mimeType}): ${imageBase64}\n\n${
+                message ? `Please analyze this image and answer: ${message}` : 
+                "Please analyze this image and describe what you see in detail."
+            }`;
+
+            // Generate content with the image as text
+            const result = await model.generateContent(prompt);
+            const response = await result.response;
+            const text = response.text();
+
+            res.json({
+                success: true,
+                response: text
+            });
+
         } catch (error) {
             console.error('Error processing image:', error);
-            res.status(500).json({ error: 'Failed to process image' });
+            res.status(500).json({
+                success: false,
+                error: 'Failed to process image'
+            });
         }
     }
 
     static async processImages(req: Request, res: Response) {
         try {
-            if (!req.files || !Array.isArray(req.files)) {
-                return res.status(400).json({ error: 'No images provided or invalid format' });
-            }
+            const { apiKey, message } = req.body;
+            const images = req.files as Express.Multer.File[];
 
-            const { message, apiKey } = req.body;
             if (!apiKey) {
                 return res.status(400).json({ error: 'API key is required' });
             }
 
+            if (!images || images.length === 0) {
+                return res.status(400).json({ error: 'At least one image is required' });
+            }
+
             const genAI = new GoogleGenerativeAI(apiKey);
-            
-            // Process each image file into base64 format
-            const imagePromises = (req.files as Express.Multer.File[]).map(async (file) => {
-                const imageBuffer = await fs.promises.readFile(file.path);
-                const mimeType = (await fileTypeFromBuffer(imageBuffer))?.mime || 'image/jpeg';
-                const base64Data = imageBuffer.toString('base64');
-                
-                // Clean up the temporary file
-                await fs.promises.unlink(file.path);
-                
-                return {
-                    inlineData: {
-                        data: base64Data,
-                        mimeType: mimeType
-                    }
-                };
+            const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+
+            // Convert all images to base64 and create a combined prompt
+            const imagesData = images.map(image => ({
+                base64: image.buffer.toString('base64'),
+                mimeType: image.mimetype
+            }));
+
+            const prompt = `Here are ${images.length} base64 encoded images:\n\n${
+                imagesData.map((img, i) => `Image ${i + 1} (${img.mimeType}): ${img.base64}`).join('\n\n')
+            }\n\n${
+                message ? `Please analyze these images and answer: ${message}` : 
+                "Please analyze these images and describe what you see in detail. Compare and contrast them if relevant."
+            }`;
+
+            // Generate content with all images as text
+            const result = await model.generateContent(prompt);
+            const response = await result.response;
+            const text = response.text();
+
+            res.json({
+                success: true,
+                response: text
             });
 
-            const processedImages = await Promise.all(imagePromises);
-            
-            // Create parts array with text prompt and images
-            const parts = [
-                { text: message || "Please analyze these images and describe what you see in detail." },
-                ...processedImages
-            ];
-
-            // Use the vision model
-            const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
-            const result = await model.generateContent(parts);
-            const response = await result.response;
-
-            res.json({ response: response.text() });
         } catch (error) {
             console.error('Error processing images:', error);
-            res.status(500).json({ error: 'Failed to process images' });
+            res.status(500).json({
+                success: false,
+                error: 'Failed to process images'
+            });
         }
     }
 
@@ -251,6 +257,47 @@ Respond in the following JSON format:
         } catch (error) {
             console.error('Error transcribing voice:', error);
             res.status(500).json({ error: 'Failed to transcribe voice message' });
+        }
+    }
+
+    static async chat(req: Request, res: Response) {
+        try {
+            const { message, sessionId } = req.body;
+            const apiKey = process.env.GEMINI_API_KEY;
+            if (!apiKey) {
+                throw new Error('Gemini API key not found');
+            }
+
+            const genAI = new GoogleGenerativeAI(apiKey);
+            const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+
+            let prompt = message;
+
+            // Handle image if present in request
+            const files = req.files as Express.Multer.File[];
+            if (files && files.length > 0) {
+                const imageFile = files[0];
+                const base64Image = imageFile.buffer.toString('base64');
+                prompt = `Here is a base64 encoded image (${imageFile.mimetype}): ${base64Image}\n\n${message}`;
+            }
+
+            // Send message
+            const result = await model.generateContent(prompt);
+            const response = await result.response;
+            const text = response.text();
+
+            console.log('Gemini Response:', text);
+            
+            res.json({ 
+                response: text,
+                sessionId 
+            });
+
+        } catch (error: unknown) {
+            console.error('Error in chat:', error);
+            res.status(500).json({ 
+                error: error instanceof Error ? error.message : 'An unknown error occurred' 
+            });
         }
     }
 } 
