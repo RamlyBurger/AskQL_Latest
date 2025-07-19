@@ -32,16 +32,6 @@ AskQL is a powerful, intuitive data analytics platform designed to bridge this g
 - **AI-Powered Translation:** Your natural language questions are automatically translated into precise database queries.
 - **Voice-to-Text Support:** Ask questions hands-free using voice commands.
 
-### 🎨 Visual Data Modeling
-- **Automatic ERDs:** Instantly visualize your database structure with automatically generated Entity Relationship Diagrams.
-- **Interactive Schema:** Drag-and-drop to map data relationships and edit your schema in real-time.
-
-### 🤖 AI-Powered Insights & Automation
-- **Automated Workflows:** Build custom data pipelines and schedule automated reports and alerts.
-- **Anomaly Detection:** Automatically identify unusual patterns and outliers in your data.
-- **Trend Prediction:** Forecast future performance and predict business trends.
-- **Risk Assessment:** Get alerts on potential business risks based on your data.
-
 ### 🔬 Simulation & Experimentation
 - **"What-if" Scenarios:** Model the potential impact of business changes.
 - **Outcome Projection:** Simulate different strategies to project future outcomes.
@@ -52,12 +42,6 @@ AskQL is a powerful, intuitive data analytics platform designed to bridge this g
 - **Exportable Reports:** Export your dashboards and reports to PDF, PNG, or CSV.
 
 ### 🎯 Database Features
-
-#### 🔒 Security & Access Control
-- Role-based access control (RBAC)
-- Row-level security policies
-- Audit logging and tracking
-- Encryption at rest and in transit
 
 #### 🚀 Performance Optimization
 - Query performance monitoring
