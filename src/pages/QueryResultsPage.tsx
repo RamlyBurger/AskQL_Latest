@@ -41,34 +41,43 @@ const QueryResultsPage: React.FC = () => {
             }
 
             try {
-                // First, get the database structure
+                // First, get the database structure with tables and their attributes
                 const database = await DatabaseService.getDatabaseById(parseInt(dbId));
                 console.log('Database structure:', database);
                 
-                // For each table, fetch its data
+                // For each table, fetch its data and ensure we have attributes
                 const tablesWithData = await Promise.all(
                     (database.tables || []).map(async (table) => {
-                        // Fetch all data for the table (no pagination)
+                        // First get the complete table info including attributes
+                        const tableInfo = await DatabaseService.getTableById(table.id);
+                        
+                        // Then fetch all data for the table (no pagination)
                         const tableData = await DatabaseService.getTableData(table.id, 1, 1000000, undefined, undefined, 1000000);
                         console.log(`Table ${table.name} data:`, tableData);
-                        console.log('Table structure:', table);
+                        console.log('Table structure:', tableInfo);
+                        
+                        // Create attributes array from the column types
+                        const attributes = Object.entries(tableData.columnTypes).map(([name, data_type]) => ({
+                            name,
+                            data_type,
+                            is_nullable: true,
+                            is_primary_key: false,
+                            is_foreign_key: false
+                        }));
                         
                         // Transform the data to match SQL.js format
-                        const transformedData = tableData.data.map(row => ({
-                            ...row,
-                            // Extract data from row_data JSONB
-                            ...row.row_data
-                        }));
+                        const transformedData = tableData.data.map(row => row.row_data);
 
                         console.log(`Transformed data for table ${table.name}:`, {
                             sampleData: transformedData.slice(0, 2),
-                            totalRows: transformedData.length
+                            totalRows: transformedData.length,
+                            attributes
                         });
                         
                         return {
-                            ...table,
+                            ...tableInfo,
                             data: transformedData,
-                            columnTypes: tableData.columnTypes
+                            attributes
                         };
                     })
                 );
@@ -76,7 +85,7 @@ const QueryResultsPage: React.FC = () => {
                 console.log('All tables with data:', tablesWithData.map(t => ({
                     name: t.name,
                     rowCount: t.data.length,
-                    columns: Object.keys(t.columnTypes || {})
+                    attributes: t.attributes.map(a => `${a.name} (${a.data_type})`)
                 })));
 
                 // Initialize SQL.js and create the database with the table data
@@ -94,7 +103,10 @@ const QueryResultsPage: React.FC = () => {
                 
                 // Find the table's column types
                 const table = tablesWithData.find(t => t.name.toLowerCase() === tableName?.toLowerCase());
-                const columnTypes = table?.columnTypes || {};
+                const columnTypes = table?.attributes?.reduce((acc, attr) => {
+                    acc[attr.name] = attr.data_type;
+                    return acc;
+                }, {} as Record<string, string>) || {};
                 
                 setResults({
                     ...result,
