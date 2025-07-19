@@ -217,7 +217,9 @@ export class DatabaseService {
 
     static async deleteTableRow(tableId: number, rowId: number): Promise<void> {
         try {
-            await axios.delete(`${API_URL}/tableData/${tableId}/data/${rowId}`);
+            console.log(`Deleting row ${rowId} from table ${tableId}`);
+            const response = await axios.delete(`${API_URL}/tableData/${tableId}/data/${rowId}`);
+            console.log('Delete response:', response.data);
         } catch (error) {
             console.error('Error deleting table row:', error);
             throw error;

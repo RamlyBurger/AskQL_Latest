@@ -269,12 +269,12 @@ Remember: ALWAYS use GetTablesList first for ANY database-related questions!`;
                         const sql = action.SQL.toLowerCase();
                         if (sql.includes('select')) {
                             if (!sql.includes('limit')) {
-                                action.SQL = `${action.SQL} `;
+                                action.SQL = `${action.SQL} limit 3`;
                                 console.log('Added missing LIMIT clause');
                             } else {
                                 const limitMatch = sql.match(/limit\s+(\d+)/i);
                                 if (limitMatch && parseInt(limitMatch[1]) > 10) {
-                                    action.SQL = action.SQL.replace(/limit\s+\d+/i, '');
+                                    action.SQL = action.SQL.replace(/limit\s+\d+/i, 'limit 3');
                                     console.log('Adjusted LIMIT to maximum allowed (10)');
                                 }
                             }

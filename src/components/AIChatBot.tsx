@@ -296,6 +296,15 @@ const ActionDisplay: React.FC<{ action: string; params?: any; sql?: string }> = 
     );
 };
 
+// Add SpeechRecognition type and setup
+const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+const recognition = SpeechRecognition ? new SpeechRecognition() : null;
+if (recognition) {
+    recognition.continuous = false; // Change to false to stop after user stops speaking
+    recognition.interimResults = true;
+    recognition.lang = 'en-US';
+}
+
 // Update the main component
 const AIChatBot: React.FC<AIChatBotProps> = ({ apiKey, database }) => {
     const [isOpen, setIsOpen] = useState(false);
@@ -323,6 +332,15 @@ const AIChatBot: React.FC<AIChatBotProps> = ({ apiKey, database }) => {
     const [actions, setActions] = useState<Action[]>([]);
     const [analysisStage, setAnalysisStage] = useState<string>('intent');
     const [isAnalyzing, setIsAnalyzing] = useState(false);
+    const [isVoiceRecognitionActive, setIsVoiceRecognitionActive] = useState(false);
+    const [transcribedText, setTranscribedText] = useState('');
+    const [isTranscribing, setIsTranscribing] = useState(false);
+
+    // Add these state variables inside the AIChatBot component
+    const [sidebarWidth, setSidebarWidth] = useState(400); // Default width
+    const [isDragging, setIsDragging] = useState(false);
+    const dragHandleRef = useRef<HTMLDivElement>(null);
+    const sidebarRef = useRef<HTMLDivElement>(null);
 
     // Function to open image modal
     const openImageModal = (imageUrl: string) => {
@@ -837,50 +855,72 @@ const AIChatBot: React.FC<AIChatBotProps> = ({ apiKey, database }) => {
 
         setError(null);
 
-        try {
-            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            const recorder = new MediaRecorder(stream);
-            const chunks: BlobPart[] = [];
-            let startTime = Date.now();
+        // Check if we want to do voice recognition or audio recording
+        const isVoiceRecognition = !isAttachmentMenuOpen;
 
-            recorder.ondataavailable = (e) => chunks.push(e.data);
-            recorder.onstop = async () => {
-                const blob = new Blob(chunks, { type: 'audio/webm' });
-                
-                // Add size check for voice recording
-                if (blob.size > 10 * 1024 * 1024) {
-                    setError('Voice recording exceeds 10MB limit. Please record a shorter message.');
-                    return;
-                }
+        if (isVoiceRecognition) {
+            if (!recognition) {
+                setError('Voice recognition is not supported in your browser.');
+                return;
+            }
 
-                const file = new File([blob], 'voice-message.webm', { type: 'audio/webm' });
-                const attachmentId = Math.random().toString(36).substring(7);
-                const previewUrl = URL.createObjectURL(blob);
-                const duration = (Date.now() - startTime) / 1000; // Duration in seconds
-                
-                // Add to pending attachments
-                setPendingAttachments(prev => [...prev, {
-                    id: attachmentId,
-                    file,
-                    type: 'voice',
-                    previewUrl,
-                    duration
-                }]);
-            };
+            try {
+                recognition.start();
+                console.log('Starting voice recognition...');
+            } catch (error) {
+                console.error('Error starting voice recognition:', error);
+                setError('Failed to start voice recognition. Please try again.');
+                setIsVoiceRecognitionActive(false);
+                setIsTranscribing(false);
+            }
+        } else {
+            // Existing audio recording logic for file attachments
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                const recorder = new MediaRecorder(stream);
+                const chunks: BlobPart[] = [];
+                let startTime = Date.now();
 
-            recorder.start();
-            setMediaRecorder(recorder);
-            setIsRecording(true);
-            setIsAttachmentMenuOpen(false);
-        } catch (error) {
-            console.error('Error accessing microphone:', error);
-            setError('Could not access microphone. Please check browser permissions and try again.');
-            setIsRecording(false);
+                recorder.ondataavailable = (e) => chunks.push(e.data);
+                recorder.onstop = async () => {
+                    const blob = new Blob(chunks, { type: 'audio/webm' });
+                    
+                    if (blob.size > 10 * 1024 * 1024) {
+                        setError('Voice recording exceeds 10MB limit. Please record a shorter message.');
+                        return;
+                    }
+
+                    const file = new File([blob], 'voice-message.webm', { type: 'audio/webm' });
+                    const attachmentId = Math.random().toString(36).substring(7);
+                    const previewUrl = URL.createObjectURL(blob);
+                    const duration = (Date.now() - startTime) / 1000;
+                    
+                    setPendingAttachments(prev => [...prev, {
+                        id: attachmentId,
+                        file,
+                        type: 'voice',
+                        previewUrl,
+                        duration
+                    }]);
+                };
+
+                recorder.start();
+                setMediaRecorder(recorder);
+                setIsRecording(true);
+                setIsAttachmentMenuOpen(false);
+            } catch (error) {
+                console.error('Error accessing microphone:', error);
+                setError('Could not access microphone. Please check browser permissions and try again.');
+                setIsRecording(false);
+            }
         }
     };
 
     const stopRecording = () => {
-        if (mediaRecorder && isRecording) {
+        if (isVoiceRecognitionActive) {
+            console.log('Stopping voice recognition...');
+            recognition?.stop();
+        } else if (mediaRecorder && isRecording) {
             mediaRecorder.stop();
             mediaRecorder.stream.getTracks().forEach(track => track.stop());
             setIsRecording(false);
@@ -934,6 +974,91 @@ const AIChatBot: React.FC<AIChatBotProps> = ({ apiKey, database }) => {
         ol: 'list-decimal pl-4 my-2',
         blockquote: 'border-l-4 border-gray-300 pl-4 my-2 italic',
     };
+
+    // Add voice recognition setup
+    useEffect(() => {
+        if (!recognition) return;
+
+        recognition.onstart = () => {
+            console.log('Voice recognition started');
+            setIsVoiceRecognitionActive(true);
+            setIsTranscribing(true);
+            setTranscribedText('');
+        };
+
+        recognition.onresult = (event: any) => {
+            const transcript = Array.from(event.results)
+                .map((result: any) => result[0])
+                .map(result => result.transcript)
+                .join(' ');
+            
+            console.log('Transcribed text:', transcript);
+            setTranscribedText(transcript);
+            setInputMessage(transcript);
+
+            // If this is a final result, stop recording
+            if (event.results[event.results.length - 1].isFinal) {
+                recognition.stop();
+            }
+        };
+
+        recognition.onend = () => {
+            console.log('Voice recognition ended');
+            setIsVoiceRecognitionActive(false);
+            setIsTranscribing(false);
+            // Optionally auto-send the message
+            if (transcribedText.trim()) {
+                handleSend();
+            }
+        };
+
+        recognition.onerror = (event: any) => {
+            console.error('Speech recognition error:', event.error);
+            setError('Voice recognition failed: ' + event.error);
+            setIsVoiceRecognitionActive(false);
+            setIsTranscribing(false);
+        };
+
+        return () => {
+            recognition.stop();
+        };
+    }, []);
+
+    // Add drag functionality
+    useEffect(() => {
+        const handleMouseMove = (e: MouseEvent) => {
+            if (!isDragging) return;
+            
+            // Calculate new width based on mouse position from right edge of screen
+            const newWidth = window.innerWidth - e.clientX;
+            // Limit width between 300px and 800px
+            const clampedWidth = Math.min(Math.max(newWidth, 300), 800);
+            setSidebarWidth(clampedWidth);
+
+            // Directly set the width on the element to avoid animation conflicts
+            if (sidebarRef.current) {
+                sidebarRef.current.style.width = `${clampedWidth}px`;
+            }
+        };
+
+        const handleMouseUp = () => {
+            setIsDragging(false);
+            document.body.style.cursor = 'default';
+            document.body.style.userSelect = 'auto';
+        };
+
+        if (isDragging) {
+            document.addEventListener('mousemove', handleMouseMove);
+            document.addEventListener('mouseup', handleMouseUp);
+            document.body.style.cursor = 'ew-resize';
+            document.body.style.userSelect = 'none';
+        }
+
+        return () => {
+            document.removeEventListener('mousemove', handleMouseMove);
+            document.removeEventListener('mouseup', handleMouseUp);
+        };
+    }, [isDragging]);
 
     return (
         <>
@@ -996,13 +1121,30 @@ const AIChatBot: React.FC<AIChatBotProps> = ({ apiKey, database }) => {
                 {isOpen && (
                     <div className="fixed inset-0 bg-black bg-opacity-50 z-[998]" onClick={handleBackgroundClick}>
                         <motion.div
+                            ref={sidebarRef}
                             key="chat-panel"
-                            initial={{ x: '100%' }}
-                            animate={{ x: 0 }}
-                            exit={{ x: '100%' }}
-                            className="fixed top-0 right-0 w-[400px] h-full bg-white shadow-xl z-[999] flex flex-col"
+                            initial={{ x: '100%', width: sidebarWidth }}
+                            animate={{ x: 0, width: sidebarWidth }}
+                            exit={{ x: '100%', width: sidebarWidth }}
+                            transition={{ type: "spring", stiffness: 300, damping: 30 }}
+                            className="fixed top-0 right-0 h-full bg-white shadow-xl z-[999] flex flex-col"
                             onClick={e => e.stopPropagation()}
                         >
+                            {/* Drag Handle */}
+                            <div
+                                ref={dragHandleRef}
+                                className={`absolute left-0 top-0 bottom-0 w-1 cursor-ew-resize transition-colors ${
+                                    isDragging ? 'bg-indigo-500 w-1' : 'hover:bg-indigo-500/20'
+                                }`}
+                                onMouseDown={(e) => {
+                                    e.preventDefault();
+                                    setIsDragging(true);
+                                }}
+                            >
+                                {/* Visual handle indicator */}
+                                <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-16 bg-indigo-500/20 rounded-full" />
+                            </div>
+
                             {/* Header */}
                             <div className="flex justify-between items-center px-5 py-4 bg-indigo-600 text-white">
                                 <div className="flex items-center space-x-2">
@@ -1220,16 +1362,23 @@ const AIChatBot: React.FC<AIChatBotProps> = ({ apiKey, database }) => {
                                 <div className="flex items-center space-x-2">
                                     <div className="relative">
                                         <button
-                                            onClick={() => isRecording ? stopRecording() : setIsAttachmentMenuOpen(!isAttachmentMenuOpen)}
+                                            onClick={() => {
+                                                if (isVoiceRecognitionActive || isRecording) {
+                                                    stopRecording();
+                                                } else {
+                                                    startRecording();
+                                                }
+                                            }}
                                             className={`w-10 h-10 flex items-center justify-center rounded-full border transition-colors ${
-                                                isRecording 
+                                                isVoiceRecognitionActive || isRecording
                                                     ? 'border-red-500 text-red-500 hover:bg-red-50'
                                                     : 'border-gray-200 hover:border-indigo-500 hover:text-indigo-600'
                                             }`}
+                                            title={isVoiceRecognitionActive ? "Stop recording" : "Start voice recognition"}
                                         >
-                                            {isRecording ? <FaMicrophone className="animate-pulse" /> : <FaPlus />}
+                                            <FaMicrophone className={isVoiceRecognitionActive ? "animate-pulse" : ""} />
                                         </button>
-                                        {isAttachmentMenuOpen && !isRecording && (
+                                        {isAttachmentMenuOpen && !isRecording && !isVoiceRecognitionActive && (
                                             <div className="absolute bottom-12 left-0 bg-white rounded-lg shadow-lg border border-gray-200 py-2 min-w-[120px]">
                                                 <button
                                                     onClick={() => handleAttachment('voice')}
@@ -1265,8 +1414,13 @@ const AIChatBot: React.FC<AIChatBotProps> = ({ apiKey, database }) => {
                                                 handleSend();
                                             }
                                         }}
-                                        placeholder={!apiKey ? 'API key not configured' : 'Type your message...'}
-                                        disabled={!apiKey || isRecording}
+                                        placeholder={
+                                            !apiKey ? 'API key not configured' :
+                                            isVoiceRecognitionActive ? 'Listening... Speak now' :
+                                            isTranscribing ? 'Processing speech...' :
+                                            'Type your message or click microphone to speak'
+                                        }
+                                        disabled={!apiKey || isRecording || isVoiceRecognitionActive}
                                         className="flex-1 border border-gray-200 rounded-full px-4 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent disabled:bg-gray-100"
                                     />
                                     <button
@@ -1277,6 +1431,19 @@ const AIChatBot: React.FC<AIChatBotProps> = ({ apiKey, database }) => {
                                         <FaPaperPlane className="text-sm" />
                                     </button>
                                 </div>
+                                {isVoiceRecognitionActive && (
+                                    <div className="mt-2 text-sm text-gray-500">
+                                        <div className="flex items-center space-x-2">
+                                            <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
+                                            <span>Listening... Click microphone again to stop</span>
+                                        </div>
+                                        {transcribedText && (
+                                            <div className="mt-1 text-gray-600 italic">
+                                                "{transcribedText}"
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
                             </div>
                         </motion.div>
                     </div>
