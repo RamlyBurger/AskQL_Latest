@@ -136,7 +136,7 @@ Create a .env file with the following content, put it in project root folder and
 DB_HOST=localhost
 DB_PORT=5432
 DB_USERNAME=postgres
-DB_PASSWORD=1234
-DB_DATABASE=askql_db
+DB_PASSWORD=postgres
+DB_DATABASE=askql
 VITE_GEMINI_API_KEY=AIzaSyAL-L6gJcUtxIJkTmGaS87rKCFai5XH2Tk
 ```

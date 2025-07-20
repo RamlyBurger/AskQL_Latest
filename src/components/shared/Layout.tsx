@@ -56,6 +56,9 @@ const Layout = ({ children }: LayoutProps) => {
                         <div className="hidden md:flex items-center space-x-8">
                             <Link to="/" className={`nav-link ${location.pathname === '/' ? activeNavLinkStyle : navLinkStyle}`}>Home</Link>
                             <Link to="/database" className={`nav-link ${location.pathname === '/database' ? activeNavLinkStyle : navLinkStyle}`}>Database</Link>
+                            <Link to="/database" className={`nav-link ${location.pathname === '/database2' ? activeNavLinkStyle : navLinkStyle}`}>ERD</Link>
+                            <Link to="/database" className={`nav-link ${location.pathname === '/database2' ? activeNavLinkStyle : navLinkStyle}`}>Analytics</Link>
+                            <Link to="/database" className={`nav-link ${location.pathname === '/database2' ? activeNavLinkStyle : navLinkStyle}`}>About Us</Link>
                             
                             {/* Theme Toggle Button */}
                             <button 

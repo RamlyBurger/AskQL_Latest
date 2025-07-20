@@ -12,7 +12,7 @@ interface TestimonialData {
 
 const testimonials: TestimonialData[] = [
     {
-        content: "Working with the ShopMe team has been a game-changer for our online presence. Their innovative approaches and dedication to excellence resulted in a 40% increase in our conversion rate.",
+        content: "Working with the AskQL team has been a game-changer for our online presence. Their innovative approaches and dedication to excellence resulted in a 40% increase in our conversion rate.",
         author: "Sarah Johnson",
         role: "CEO, TechSolutions",
         image: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?ixlib=rb-1.2.1&auto=format&fit=crop&w=100&q=80"
@@ -24,7 +24,7 @@ const testimonials: TestimonialData[] = [
         image: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?ixlib=rb-1.2.1&auto=format&fit=crop&w=100&q=80"
     },
     {
-        content: "From the initial consultation to the final product launch, ShopMe exceeded our expectations at every turn. Their customer support is unmatched, and the solutions they delivered helped us scale our business rapidly.",
+        content: "From the initial consultation to the final product launch, AskQL exceeded our expectations at every turn. Their customer support is unmatched, and the solutions they delivered helped us scale our business rapidly.",
         author: "Michelle Torres",
         role: "Marketing Director, GrowthFusion",
         image: "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?ixlib=rb-1.2.1&auto=format&fit=crop&w=100&q=80"
